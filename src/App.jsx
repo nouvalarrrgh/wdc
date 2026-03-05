@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart2, BookOpen, CalendarDays, Focus, Bell, Search, Menu, X, ChevronRight, Settings as SettingsIcon, Star } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ZenNotes from './components/ZenNotes';
@@ -8,6 +9,7 @@ import Habits from './components/Habits';
 import Login from './components/Login';
 import Profile from './components/Profile';
 import Settings from './components/Settings';
+import CognitiveGuard from './components/CognitiveGuard';
 
 
 function App() {
@@ -17,6 +19,25 @@ function App() {
     const saved = localStorage.getItem('stuprod_user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [isLowRest, setIsLowRest] = useState(false);
+
+  useEffect(() => {
+    const checkRestScore = () => {
+      const savedScores = localStorage.getItem('stuprod_radar_scores');
+      if (savedScores) {
+        try {
+          const parsed = JSON.parse(savedScores);
+          setIsLowRest(parsed.istirahat < 30);
+        } catch (e) {
+          setIsLowRest(false);
+        }
+      }
+    };
+    checkRestScore(); // Initial check
+
+    window.addEventListener('radarScoreUpdated', checkRestScore);
+    return () => window.removeEventListener('radarScoreUpdated', checkRestScore);
+  }, []);
 
   if (!user) return <Login onLogin={setUser} />;
 
@@ -75,7 +96,8 @@ function App() {
     { icon: <SettingsIcon />, classes: { text: 'text-slate-800', bg: 'bg-slate-100' } };
 
   return (
-    <div className="flex h-[100dvh] flex-1 bg-[#F8FAFC] font-sans text-sm overflow-hidden text-slate-800">
+    <div className={`flex h-[100dvh] flex-1 font-sans text-sm overflow-hidden text-slate-800 transition-colors duration-1000 ${isLowRest ? 'bg-amber-50/80 sepia-[.20]' : 'bg-[#F8FAFC]'}`}>
+      <CognitiveGuard />
 
       {/* Mobile Overlay */}
       {isSidebarOpen && (
@@ -85,9 +107,15 @@ function App() {
       {/* ========== SIDEBAR ========== */}
       <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col w-[280px] h-[100dvh] bg-slate-50/90 backdrop-blur-xl border-r border-slate-200/60 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 shadow-2xl lg:shadow-none overflow-hidden`}>
 
-        {/* Subtle decorative mesh gradient in sidebar background */}
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[30%] bg-indigo-400/10 blur-3xl rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[30%] bg-rose-400/10 blur-3xl rounded-full" />
+        {/* Subtle decorative dynamic mesh gradient in sidebar background */}
+        <motion.div
+          animate={{ x: [0, 20, 0], y: [0, -20, 0], scale: [1, 1.1, 1] }}
+          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+          className="absolute top-[-10%] left-[-10%] w-[50%] h-[30%] bg-indigo-400/10 blur-3xl rounded-full" />
+        <motion.div
+          animate={{ x: [0, -20, 0], y: [0, 20, 0], scale: [1, 1.2, 1] }}
+          transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+          className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[30%] bg-rose-400/10 blur-3xl rounded-full" />
 
         {/* Logo / Brand area */}
         <div className="flex items-center justify-between h-[76px] px-6 border-b border-slate-200/50 shrink-0 relative bg-white/50 backdrop-blur-md">
@@ -100,7 +128,7 @@ function App() {
               Stu<span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">Prod</span>
             </h1>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg">
+          <button onClick={() => setIsSidebarOpen(false)} aria-label="Tutup Menu" className="lg:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -144,7 +172,7 @@ function App() {
         {/* Topbar */}
         <header className="flex items-center justify-between w-full h-[76px] shrink-0 border-b border-slate-200/50 bg-white/80 backdrop-blur-xl px-6 lg:px-10 z-30 sticky top-0 shadow-md shadow-slate-300/40">
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-xl active:scale-95 transition-transform">
+            <button onClick={() => setIsSidebarOpen(true)} aria-label="Buka Menu Navigasi" className="lg:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-xl active:scale-95 transition-transform focus:ring-2 focus:ring-indigo-500">
               <Menu className="w-6 h-6" />
             </button>
             <h2 className={`font-black text-xl md:text-2xl tracking-tight flex items-center gap-3 transition-colors ${activeNavItem.classes.text}`}>
@@ -157,23 +185,32 @@ function App() {
           <div className="flex items-center gap-3">
             <div className="relative hidden md:block w-64">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" placeholder="Cari catatan, tugas, jadwal..." className="w-full bg-slate-100 border-none rounded-2xl pl-11 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" />
+              <input type="text" aria-label="Kolom Pencarian" placeholder="Cari catatan, tugas, jadwal..." className="w-full bg-slate-100 border-none rounded-2xl pl-11 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" />
             </div>
-            <button className="relative p-2.5 text-slate-500 hover:bg-slate-100 rounded-full transition-colors cursor-pointer bg-white border border-slate-200 shadow-sm">
+            <button aria-label="Notifikasi" className="relative p-2.5 text-slate-500 hover:bg-slate-100 rounded-full transition-colors cursor-pointer bg-white border border-slate-200 shadow-sm focus:ring-2 focus:ring-indigo-500">
               <Bell className="w-5 h-5" />
               <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white animate-pulse" />
             </button>
-            <button onClick={() => setActiveMenu('settings')}
-              className={`relative p-2.5 transition-colors cursor-pointer rounded-full border shadow-sm ${activeMenu === 'settings' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-500 hover:bg-slate-100 border-slate-200'}`}>
+            <button onClick={() => setActiveMenu('settings')} aria-label="Pengaturan Akun"
+              className={`relative p-2.5 transition-colors cursor-pointer rounded-full border shadow-sm focus:ring-2 focus:ring-indigo-500 ${activeMenu === 'settings' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-500 hover:bg-slate-100 border-slate-200'}`}>
               <SettingsIcon className="w-5 h-5" />
             </button>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 pb-32 relative scroll-smooth custom-scrollbar">
-          <div className="max-w-7xl mx-auto w-full h-full animate-fade-in-up">
-            {renderContent()}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeMenu}
+              initial={{ opacity: 0, y: 15, filter: 'blur(5px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -15, filter: 'blur(5px)' }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="max-w-7xl mx-auto w-full min-h-full"
+            >
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Global Sticky Footer */}

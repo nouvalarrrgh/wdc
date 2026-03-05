@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js';
 import { Radar } from 'react-chartjs-2';
-import { Activity, LayoutGrid, Sparkles, TrendingUp } from 'lucide-react';
+import { Activity, LayoutGrid, Sparkles, TrendingUp, FileText } from 'lucide-react';
+import { generateExecutiveReport } from '../utils/ReportGenerator';
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
@@ -52,8 +53,11 @@ const Dashboard = () => {
   // Evaluation Mascot States
   const [evaluationState, setEvaluationState] = useState('idle');
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [scores, setScores] = useState({
-    akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50
+  const [scores, setScores] = useState(() => {
+    const saved = localStorage.getItem('stuprod_radar_scores');
+    return saved ? JSON.parse(saved) : {
+      akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50
+    };
   });
   const [insightText, setInsightText] = useState("");
   const [finalInsight, setFinalInsight] = useState("");
@@ -129,6 +133,9 @@ const Dashboard = () => {
         for (const key in effect) {
           newScores[key] = Math.max(0, Math.min(100, newScores[key] + effect[key]));
         }
+        localStorage.setItem('stuprod_radar_scores', JSON.stringify(newScores));
+        // Trigger event custom to alert App.jsx
+        window.dispatchEvent(new Event('radarScoreUpdated'));
         return newScores;
       });
     }
@@ -144,7 +151,10 @@ const Dashboard = () => {
   const startEvaluation = () => {
     setEvaluationState('evaluating');
     setCurrentQuestion(0);
-    setScores({ akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50 });
+    const initialScores = { akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50 };
+    setScores(initialScores);
+    localStorage.setItem('stuprod_radar_scores', JSON.stringify(initialScores));
+    window.dispatchEvent(new Event('radarScoreUpdated'));
     setInsightText("");
     setFinalInsight("");
   };
@@ -281,7 +291,7 @@ const Dashboard = () => {
   const userName = savedUser?.name || 'Mahasiswa';
 
   return (
-    <div className="space-y-6 pb-32">
+    <div id="dashboard-report-content" className="space-y-6 pb-32">
 
       {/* =============== WELCOME BANNER =============== */}
       <div className="relative overflow-hidden animated-gradient-bg rounded-3xl p-6 md:p-8 text-white spatial-shadow">
@@ -317,6 +327,17 @@ const Dashboard = () => {
                   <div className="text-[10px] text-indigo-200 font-bold uppercase tracking-wide">{stat.label}</div>
                 </div>
               ))}
+
+              <button
+                onClick={generateExecutiveReport}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400/50 rounded-2xl px-4 py-2.5 text-center spatial-hover transition-all shadow-lg flex items-center justify-center gap-2 group"
+              >
+                <FileText className="w-5 h-5 text-indigo-200 group-hover:text-white transition-colors" />
+                <div className="text-left leading-tight">
+                  <div className="text-sm font-black whitespace-nowrap">Export PDF</div>
+                  <div className="text-[10px] text-indigo-200 font-bold uppercase tracking-wide">Weekly Report</div>
+                </div>
+              </button>
             </div>
           </div>
 

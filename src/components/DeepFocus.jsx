@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import Lottie from "lottie-react";
+import plantData from "../assets/lottie/plant.json";
 import {
   Play,
   Pause,
@@ -15,6 +17,9 @@ import {
   Leaf,
   Skull,
   X,
+  CloudRain,
+  Coffee,
+  Clock
 } from "lucide-react";
 import { NekoMascotFull } from "./NekoMascot";
 
@@ -23,25 +28,42 @@ const DeepFocus = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TOTAL_TIME);
   const fullscreenRef = useRef(null);
-  const audioRef = useRef(null);
+  const audioRefs = useRef({
+    rain: null,
+    cafe: null,
+    clock: null
+  });
+
   const [isMuted, setIsMuted] = useState(false);
+  const [volumes, setVolumes] = useState({ rain: 50, cafe: 0, clock: 0 }); // 0-100
   const [preCountdown, setPreCountdown] = useState(null); // null, 3, 2, 1, "Mulai!"
 
   // Initialize Audio only once
   useEffect(() => {
-    audioRef.current = new Audio(
-      "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3",
-    );
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0.5;
+    audioRefs.current.rain = new Audio("/audio/rain.ogg");
+    audioRefs.current.cafe = new Audio("/audio/cafe.ogg");
+    audioRefs.current.clock = new Audio("/audio/clock.ogg");
+
+    Object.values(audioRefs.current).forEach(audio => {
+      audio.loop = true;
+    });
 
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
+      Object.values(audioRefs.current).forEach(audio => {
+        if (audio) {
+          audio.pause();
+          audio.src = "";
+        }
+      });
     };
   }, []);
+
+  // Sync volume state to actual audio objects
+  useEffect(() => {
+    if (audioRefs.current.rain) audioRefs.current.rain.volume = volumes.rain / 100;
+    if (audioRefs.current.cafe) audioRefs.current.cafe.volume = volumes.cafe / 100;
+    if (audioRefs.current.clock) audioRefs.current.clock.volume = volumes.clock / 100;
+  }, [volumes]);
 
   // Gamification Stats
   const [stats, setStats] = useState(() => {
@@ -58,15 +80,16 @@ const DeepFocus = () => {
 
   // Audio Playback Controller
   useEffect(() => {
-    if (audioRef.current) {
-      if (isRunning && !showWarning && treeState === "growing" && !isMuted) {
-        audioRef.current
-          .play()
-          .catch((e) => console.log("Audio autoplay prevented:", e));
+    const shouldPlay = isRunning && !showWarning && treeState === "growing" && !isMuted;
+
+    Object.values(audioRefs.current).forEach(audio => {
+      if (!audio) return;
+      if (shouldPlay) {
+        audio.play().catch((e) => console.log("Audio autoplay prevented:", e));
       } else {
-        audioRef.current.pause();
+        audio.pause();
       }
-    }
+    });
   }, [isRunning, showWarning, treeState, isMuted]);
 
   useEffect(() => {
@@ -230,7 +253,7 @@ const DeepFocus = () => {
               } ${treeState === "success" && "bg-emerald-50"}`}
           >
             <div className="w-40 h-40 -mb-6 flex items-center justify-center animate-pulse drop-shadow-[0_0_15px_rgba(52,211,153,0.4)]">
-              <Sprout className="w-24 h-24 text-emerald-500" strokeWidth={1.5} />
+              <Lottie animationData={plantData} loop={true} className="w-full h-full" />
             </div>
             <p className="text-emerald-300 text-sm mt-4 font-bold tracking-wide animate-pulse">
               Merawat pohon fokus...
@@ -423,6 +446,33 @@ const DeepFocus = () => {
                     : "Panen Pohon..."}
               </span>
             </button>
+          )}
+
+          {/* Spatial Audio Mixer */}
+          {treeState === "idle" && (
+            <div className="w-full max-w-[280px] mt-6 bg-slate-800/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl flex flex-col gap-4 shadow-xl">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                <span>Ambient Mixer</span>
+                <button onClick={() => setIsMuted(!isMuted)} aria-label={isMuted ? "Bunyikan Audio" : "Bisukan Audio"} className="text-emerald-400 hover:text-white transition-colors focus:ring-2 focus:ring-emerald-500 rounded-md p-1">
+                  {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+              </h4>
+
+              <div className="flex items-center gap-3">
+                <CloudRain className="w-4 h-4 text-sky-400 shrink-0" aria-hidden="true" />
+                <input type="range" min="0" max="100" value={volumes.rain} onChange={(e) => setVolumes({ ...volumes, rain: e.target.value })} aria-label="Volume Suara Hujan" className="w-full accent-sky-400 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer focus:ring-2 focus:ring-sky-500" />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Coffee className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
+                <input type="range" min="0" max="100" value={volumes.cafe} onChange={(e) => setVolumes({ ...volumes, cafe: e.target.value })} aria-label="Volume Suasana Kafe" className="w-full accent-amber-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer focus:ring-2 focus:ring-amber-500" />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Clock className="w-4 h-4 text-slate-300 shrink-0" aria-hidden="true" />
+                <input type="range" min="0" max="100" value={volumes.clock} onChange={(e) => setVolumes({ ...volumes, clock: e.target.value })} aria-label="Volume Detak Jam" className="w-full accent-slate-300 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer focus:ring-2 focus:ring-slate-300" />
+              </div>
+            </div>
           )}
         </div>
       </div>
