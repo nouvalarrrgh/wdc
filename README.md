@@ -6,7 +6,7 @@ Platform produktivitas mahasiswa berbasis web dengan tema:
 ## Informasi Tim
 
 - Nama Website: `StuProd`
-- Nama Tim: `Logicraft'
+- Nama Tim: `Logicraft`
 - Kompetisi: `IFest #14 - Web Development Competition 2026`
 
 ## 5 Fitur Utama Produktivitas
