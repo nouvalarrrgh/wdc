@@ -175,22 +175,39 @@ function App() {
 
   // ROUTING LOGIC
   if (!user) {
-    if (showLanding) {
-      return <LandingPage onStart={() => setShowLanding(false)} />;
-    } else {
-      return (
-        <div className="relative min-h-screen bg-[#050814] text-slate-300">
-          <button
-            onClick={() => setShowLanding(true)}
-            className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50 px-2.5 py-2 sm:px-4 sm:py-2 bg-slate-900/40 sm:bg-white/5 backdrop-blur-md rounded-full sm:rounded-xl font-bold text-white border border-slate-700/60 sm:border-white/10 shadow-lg cursor-pointer hover:bg-slate-900/60 sm:hover:bg-white/10 hover:border-[#00f0ff]/50 transition-all flex items-center gap-1.5 sm:gap-2"
+    return (
+      <AnimatePresence mode="wait">
+        {showLanding ? (
+          <MotionDiv
+            key="landing"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Kembali ke Beranda</span>
-          </button>
-          <Login onLogin={setUser} />
-        </div>
-      );
-    }
+            <LandingPage onStart={() => setShowLanding(false)} />
+          </MotionDiv>
+        ) : (
+          <MotionDiv
+            key="login"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="relative min-h-screen bg-[#050814] text-slate-300"
+          >
+            <button
+              onClick={() => setShowLanding(true)}
+              className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50 px-2.5 py-2 sm:px-4 sm:py-2 bg-slate-900/40 sm:bg-white/5 backdrop-blur-md rounded-full sm:rounded-xl font-bold text-white border border-slate-700/60 sm:border-white/10 shadow-lg cursor-pointer hover:bg-slate-900/60 sm:hover:bg-white/10 hover:border-[#00f0ff]/50 transition-all flex items-center gap-1.5 sm:gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Kembali ke Beranda</span>
+            </button>
+            <Login onLogin={setUser} />
+          </MotionDiv>
+        )}
+      </AnimatePresence>
+    );
   }
 
   const handleLogout = () => {

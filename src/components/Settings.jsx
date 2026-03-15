@@ -92,7 +92,7 @@ export default function Settings({ onLogout }) {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allData, null, 2));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", `StuProd_Backup_${new Date().toISOString().split('T')[0]}.json`);
+            downloadAnchorNode.setAttribute("download", `Prodify_Backup_${new Date().toISOString().split('T')[0]}.json`);
             document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
@@ -147,7 +147,7 @@ export default function Settings({ onLogout }) {
     const handleDeleteAccount = () => {
         if (window.confirm("PERINGATAN ZONA BAHAYA!\n\nTindakan ini akan melenyapkan SELURUH data produktivitas, catatan, jadwal, profil, dan pengaturan Anda dari browser ini secara permanen. Anda akan dikembalikan ke halaman login.\n\nApakah Anda benar-benar yakin?")) {
 
-            // LOGIKA MASTER: Sapu bersih SEMUA key milik StuProd secara dinamis!
+            // LOGIKA MASTER: Sapu bersih SEMUA key milik Prodify secara dinamis!
             const storageOptions = typeof window !== 'undefined' && window.sessionStorage.getItem('isDemoMode') === 'true' ? window.sessionStorage : localStorage;
             Object.keys(storageOptions).forEach(key => {
                 if (key.startsWith('prodify_') || key.startsWith('zen_') || key.startsWith('matrix_') || key.startsWith('time_') || key.startsWith('forest_')) {
@@ -219,7 +219,7 @@ export default function Settings({ onLogout }) {
                             <div className="flex items-center justify-between">
                                 <div className="pr-4">
                                     <p className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-1.5"><Bell className="w-3.5 h-3.5 text-slate-400" /> Notifikasi Cerdas</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Izinkan StuProd memunculkan lencana notifikasi (*bell*).</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Izinkan Prodify memunculkan lencana notifikasi (*bell*).</p>
                                 </div>
                                 <Toggle isOn={settings.notifications} onClick={() => handleToggle('notifications')} />
                             </div>

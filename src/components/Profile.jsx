@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, GraduationCap, MapPin, Camera, Save, Phone, AtSign, Flame, Clock, CheckCircle2 } from 'lucide-react';
+import { User, Mail, GraduationCap, MapPin, Camera, Save, Phone, AtSign, Flame, CheckCircle2, TreePine, BarChart2, AlertTriangle } from 'lucide-react';
 import { getJson, setJson } from '../utils/storage';
 
 const getInitialProfile = () => {
@@ -44,32 +44,34 @@ export default function Profile() {
     const [profile, setProfile] = useState(getInitialProfile);
     const [isEditing, setIsEditing] = useState(false);
     const [summary, setSummary] = useState({
-        streak: 0,
+        treesPlanted: 0,
+        longestStreak: 0,
+        avgRadar: 0,
         completedTasks: 0,
-        focusSessionsToday: 0,
-        habitsCount: 0,
     });
 
     useEffect(() => {
-        const todayLocal = new Date();
-        todayLocal.setMinutes(todayLocal.getMinutes() - todayLocal.getTimezoneOffset());
-        const todayKey = todayLocal.toISOString().split('T')[0];
-
         const streakData = getJson('prodify_login_streak', { streak: 0 });
         const deadlineTasks = getJson('prodify_tasks', []);
         const matrixTasks = getJson('matrix_tasks', []);
         const completedTasks = deadlineTasks.filter(t => t.completed).length + matrixTasks.filter(t => t.completed).length;
-
-        let todaySessions = parseInt(getJson(`forest_today_${todayKey}`, '0'));
-        if (Number.isNaN(todaySessions)) todaySessions = 0;
-
         const habits = getJson('prodify_habits_v4', []);
+        const forestStats = getJson('forest_stats', { planted: 0 });
+        const radarScores = getJson('prodify_radar_scores', { akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50 });
+
+        const habitLongest = habits.reduce((acc, h) => Math.max(acc, h?.streak || 0), 0);
+        const longestStreak = Math.max(streakData.streak || 0, habitLongest);
+
+        const radarVals = Object.values(radarScores || {})
+            .map((v) => (typeof v === 'number' ? v : parseFloat(v)))
+            .filter((n) => Number.isFinite(n));
+        const avgRadar = radarVals.length ? Math.round(radarVals.reduce((a, b) => a + b, 0) / radarVals.length) : 0;
 
         setSummary({
-            streak: streakData.streak || 0,
+            treesPlanted: forestStats?.planted || 0,
+            longestStreak,
+            avgRadar,
             completedTasks,
-            focusSessionsToday: todaySessions,
-            habitsCount: habits.length || 0,
         });
     }, []);
 
@@ -105,6 +107,17 @@ export default function Profile() {
                 setJson('prodify_profileInfo', updatedProfile);
             };
             reader.readAsDataURL(file);
+        }
+    };
+
+    const handleResetAccount = () => {
+        const ok = window.confirm('Reset akun akan menghapus seluruh data Prodify di browser ini. Lanjutkan?');
+        if (!ok) return;
+        try {
+            localStorage.clear();
+            window.sessionStorage?.clear?.();
+        } finally {
+            window.location.reload();
         }
     };
 
@@ -162,31 +175,31 @@ export default function Profile() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
                             <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <Flame className="w-3.5 h-3.5 text-orange-400" /> Streak Harian
+                                <TreePine className="w-3.5 h-3.5 text-emerald-400" /> Total Pohon
                             </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.streak}</p>
-                            <p className="text-[10px] text-slate-400">Hari berturut-turut login</p>
+                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.treesPlanted}</p>
+                            <p className="text-[10px] text-slate-400">Pohon ditanam dari Deep Focus</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                                <Flame className="w-3.5 h-3.5 text-orange-400" /> Longest Streak
+                            </div>
+                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.longestStreak}</p>
+                            <p className="text-[10px] text-slate-400">Rekor streak tertinggi</p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                                <BarChart2 className="w-3.5 h-3.5 text-indigo-400" /> Skor Radar
+                            </div>
+                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.avgRadar}%</p>
+                            <p className="text-[10px] text-slate-400">Rata-rata evaluasi</p>
                         </div>
                         <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
                             <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Tugas Selesai
                             </div>
                             <p className="text-xl font-black text-slate-800 dark:text-white">{summary.completedTasks}</p>
-                            <p className="text-[10px] text-slate-400">Sejak mulai memakai StuProd</p>
-                        </div>
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Sesi Deep Focus
-                            </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.focusSessionsToday}</p>
-                            <p className="text-[10px] text-slate-400">Sesi hari ini</p>
-                        </div>
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <User className="w-3.5 h-3.5 text-violet-400" /> Habit Aktif
-                            </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.habitsCount}</p>
-                            <p className="text-[10px] text-slate-400">Kebiasaan yang sedang kamu latih</p>
+                            <p className="text-[10px] text-slate-400">Sejak mulai memakai Prodify</p>
                         </div>
                     </div>
 
@@ -288,6 +301,27 @@ export default function Profile() {
                             />
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Danger Zone: Reset Akun */}
+            <div className="bg-gradient-to-r from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-900 rounded-[2rem] border border-rose-200 dark:border-rose-900/50 p-6 md:p-8 shadow-sm transition-colors">
+                <h4 className="text-xs font-black text-rose-600 dark:text-rose-500 uppercase tracking-widest mb-5 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" /> Zona Berbahaya
+                </h4>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
+                    <div>
+                        <p className="text-sm font-bold text-slate-800 dark:text-white">Reset Akun</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
+                            Menghapus seluruh data lokal (profil, catatan, tugas, habit, dan statistik) agar juri bisa mencoba dari awal.
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleResetAccount}
+                        className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-rose-600/20 cursor-pointer"
+                    >
+                        Reset Akun
+                    </button>
                 </div>
             </div>
         </div>

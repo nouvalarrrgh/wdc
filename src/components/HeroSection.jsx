@@ -96,6 +96,15 @@ export default function HeroSection({ onStart, onDemo }) {
           </span>
         </motion.div>
 
+        <motion.p
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.05 }}
+          className="text-[11px] md:text-xs font-black tracking-[0.18em] uppercase text-indigo-600/80 dark:text-indigo-300/80 mb-3"
+        >
+          Empowering Students Through Innovative Productivity Tools
+        </motion.p>
+
         <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
           className="text-5xl md:text-7xl font-black leading-[1.1] mb-6 tracking-tight drop-shadow-sm">
           Amplify Your Work <br className="hidden md:block" />
@@ -112,7 +121,7 @@ export default function HeroSection({ onStart, onDemo }) {
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
           className="flex flex-col sm:flex-row gap-4 justify-center mb-20 relative z-30">
           <button onClick={onStart} className="px-8 py-4 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-2xl font-black text-lg hover:scale-105 transition-all shadow-[0_10px_40px_-10px_rgba(79,70,229,0.8)] flex items-center justify-center gap-2 cursor-pointer">
-            Mulai Gratis <ArrowRight className="w-5 h-5" />
+            Mulai Sekarang <ArrowRight className="w-5 h-5" />
           </button>
           <button onClick={onDemo} className="px-8 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-2 border-indigo-100 dark:border-slate-700 text-slate-700 dark:text-white rounded-2xl font-bold text-lg hover:border-indigo-500 dark:hover:border-indigo-500 transition-all flex items-center justify-center cursor-pointer shadow-sm">
             Lihat Demo

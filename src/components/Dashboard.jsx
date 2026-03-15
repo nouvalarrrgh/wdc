@@ -110,7 +110,7 @@ const QUOTES = [
   {
     id: 'progress-1',
     text: 'Kemajuan kecil yang konsisten setiap hari selalu mengalahkan ledakan produktivitas satu malam.',
-    author: 'StuProd Coach',
+    author: 'Prodify Coach',
   },
   {
     id: 'focus-1',

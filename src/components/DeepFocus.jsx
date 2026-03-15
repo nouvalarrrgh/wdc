@@ -14,6 +14,8 @@ const DURATION_OPTIONS = [
   { label: '90 Menit', seconds: 90 * 60, desc: 'Ultradian' },
 ];
 
+const FOCUS_SESSION_KEY = 'prodify_deepfocus_session_v1';
+
 const getLocalDateKey = (dateObj = new Date()) => {
   const d = new Date(dateObj);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -26,6 +28,7 @@ const DeepFocus = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TOTAL_TIME);
   const fullscreenRef = useRef(null);
+  const skipPersistOnceRef = useRef(false);
 
   // STATE UNTUK FALLBACK NOTIFICATION (Anti Notif Terblokir)
   const [inAppAlert, setInAppAlert] = useState(null);
@@ -72,6 +75,73 @@ const DeepFocus = () => {
   // MENGGUNAKAN setJson (Bukan setItem biasa)
   useEffect(() => { setJson("forest_stats", stats); }, [stats]);
 
+  // Persist session state so refresh does not reset the timer.
+  const removePersistedSession = useCallback(() => {
+    try {
+      const isDemoMode = typeof window !== 'undefined' && window.sessionStorage.getItem('isDemoMode') === 'true';
+      const storageOptions = isDemoMode ? window.sessionStorage : localStorage;
+      storageOptions.removeItem(FOCUS_SESSION_KEY);
+      window.dispatchEvent(new Event('storage'));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = getJson(FOCUS_SESSION_KEY, null);
+    if (!saved) return;
+
+    const durIdx = Number.isFinite(saved.selectedDuration) ? saved.selectedDuration : 0;
+    const clampedIdx = Math.min(Math.max(durIdx, 0), DURATION_OPTIONS.length - 1);
+    const restoredTimeLeft = Math.max(0, parseInt(saved.timeLeft, 10) || 0);
+
+    // Restore only meaningful sessions (running or mid-state).
+    if (saved.isRunning || (saved.treeState && saved.treeState !== 'idle')) {
+      skipPersistOnceRef.current = true;
+      setSelectedDuration(clampedIdx);
+      setTimeLeft(restoredTimeLeft);
+      setIsRunning(!!saved.isRunning);
+      setTreeState(saved.treeState || 'idle');
+      setShowWarning(!!saved.showWarning);
+      setIsResearching(!!saved.isResearching);
+      setIsMuted(!!saved.isMuted);
+      setPreCountdown(null);
+    } else {
+      removePersistedSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (skipPersistOnceRef.current) {
+      skipPersistOnceRef.current = false;
+      return;
+    }
+
+    const shouldClear =
+      !isRunning &&
+      treeState === 'idle' &&
+      !showWarning &&
+      !isResearching &&
+      preCountdown === null &&
+      timeLeft === TOTAL_TIME;
+
+    if (shouldClear) {
+      removePersistedSession();
+      return;
+    }
+
+    setJson(FOCUS_SESSION_KEY, {
+      selectedDuration,
+      isRunning,
+      timeLeft,
+      treeState,
+      showWarning,
+      isResearching,
+      isMuted,
+    });
+  }, [selectedDuration, isRunning, timeLeft, treeState, showWarning, isResearching, isMuted, preCountdown, TOTAL_TIME, removePersistedSession]);
+
   const killTree = useCallback(() => {
     setIsRunning(false);
     setShowWarning(false);
@@ -82,8 +152,9 @@ const DeepFocus = () => {
     setTimeout(() => {
       setTimeLeft(TOTAL_TIME);
       setTreeState("idle");
+      removePersistedSession();
     }, 5000);
-  }, [TOTAL_TIME]);
+  }, [TOTAL_TIME, removePersistedSession]);
 
   // ========================================================
   // EXPERT TACTIC: RESEARCH MODE (Dispensasi 2 Menit & Jeda Manual)
@@ -199,10 +270,11 @@ const DeepFocus = () => {
       setTimeout(() => {
         setTimeLeft(TOTAL_TIME);
         setTreeState("idle");
+        removePersistedSession();
       }, 4000);
     }
     return () => clearInterval(interval);
-  }, [isRunning, timeLeft, showWarning, TOTAL_TIME, isResearching, todayKey]);
+  }, [isRunning, timeLeft, showWarning, TOTAL_TIME, isResearching, todayKey, removePersistedSession]);
 
   // Pra-Kiraan (Pre-Countdown)
   useEffect(() => {
