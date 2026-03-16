@@ -51,6 +51,7 @@ const DeepFocus = () => {
   const [isResearching, setIsResearching] = useState(false);
 
   const audioRef = useRef(null);
+  const beepCtxRef = useRef(null);
   const [isMuted, setIsMuted] = useState(false);
   const [preCountdown, setPreCountdown] = useState(null);
 
@@ -91,6 +92,7 @@ const DeepFocus = () => {
   useEffect(() => {
     return () => {
       if (brainDumpToastTimerRef.current) clearTimeout(brainDumpToastTimerRef.current);
+      try { beepCtxRef.current?.close?.(); } catch { }
     };
   }, []);
 
@@ -224,13 +226,30 @@ const DeepFocus = () => {
   // ========================================================
   // EXPERT TACTIC: RESEARCH MODE (Dispensasi 2 Menit & Jeda Manual)
   // ========================================================
+  const primeBeepAudio = useCallback(() => {
+    try {
+      const soundEnabled = appSettings.focusSounds !== false;
+      if (!soundEnabled || isMuted) return;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!beepCtxRef.current) beepCtxRef.current = new AudioCtx();
+      if (beepCtxRef.current?.state === 'suspended') {
+        beepCtxRef.current.resume?.().catch(() => { });
+      }
+    } catch {
+      // ignore
+    }
+  }, [appSettings.focusSounds, isMuted]);
+
   const playShortBeep = useCallback(() => {
     try {
       const soundEnabled = appSettings.focusSounds !== false;
       if (!soundEnabled || isMuted) return;
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
-      const ctx = new AudioCtx();
+      const ctx = beepCtxRef.current || new AudioCtx();
+      beepCtxRef.current = ctx;
+      if (ctx?.state === 'suspended') ctx.resume?.().catch(() => { });
       const o = ctx.createOscillator();
       const g = ctx.createGain();
       o.type = 'sine';
@@ -243,13 +262,17 @@ const DeepFocus = () => {
       g.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
       o.stop(now + 0.13);
-      setTimeout(() => ctx.close().catch(() => { }), 180);
+      setTimeout(() => {
+        try { o.disconnect(); } catch { }
+        try { g.disconnect(); } catch { }
+      }, 220);
     } catch {
       // ignore
     }
   }, [appSettings.focusSounds, isMuted]);
 
   const triggerResearchMode = useCallback(() => {
+    primeBeepAudio();
     setIsResearching(true);
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => { });
@@ -280,7 +303,7 @@ const DeepFocus = () => {
       });
 
     }, 120000);
-  }, [killTree, playShortBeep]);
+  }, [killTree, playShortBeep, primeBeepAudio]);
 
   const resumeFromResearch = useCallback(() => {
     setIsResearching(false);
@@ -401,6 +424,7 @@ const DeepFocus = () => {
   }, [preCountdown, TOTAL_TIME]);
 
   const handleStart = () => {
+    primeBeepAudio();
     setTimeLeft(DURATION_OPTIONS[selectedDuration].seconds);
     if (appSettings.strictFocusMode !== false && fullscreenRef.current) {
       fullscreenRef.current.requestFullscreen().catch(() => { });

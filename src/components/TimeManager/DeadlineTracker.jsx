@@ -99,6 +99,8 @@ const DeadlineTracker = ({
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <button
                       onClick={() => toggleDeadlineTask(task.id)}
+                      type="button"
+                      aria-label={task.completed ? "Batalkan selesai" : "Tandai selesai"}
                       className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors cursor-pointer ${task.completed ? "bg-emerald-500 border-emerald-500" : "border-slate-300 dark:border-slate-600 hover:border-indigo-500 dark:hover:border-indigo-400"}`}
                     >
                       {task.completed && <Check className="w-3.5 h-3.5 text-white" />}
@@ -122,6 +124,8 @@ const DeadlineTracker = ({
                     {!task.completed && (
                       <button
                         onClick={() => transferDeadlineTask(task)}
+                        type="button"
+                        aria-label="Kirim ke Matrix"
                         className="shrink-0 p-2 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-xl transition-colors cursor-pointer"
                         title="Kirim ke Matrix"
                       >
@@ -130,6 +134,8 @@ const DeadlineTracker = ({
                     )}
                     <button
                       onClick={() => deleteDeadlineTask(task.id)}
+                      type="button"
+                      aria-label="Hapus deadline"
                       className="shrink-0 p-2 text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl transition-colors cursor-pointer"
                       title="Hapus"
                     >

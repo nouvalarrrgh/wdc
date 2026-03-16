@@ -65,7 +65,7 @@ const EisenhowerMatrix = ({
                                 ...provided.draggableProps.style,
                                 ...(snapshot.isDragging ? { zIndex: 9999 } : null),
                               }}
-                              className={`group bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-slate-100/80 dark:border-slate-700/80 flex items-center gap-2 transition-shadow transition-colors ${snapshot.isDragging ? "shadow-xl ring-2 ring-indigo-400 relative" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              className={`group bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-slate-100/80 dark:border-slate-700/80 flex items-center gap-2 transition-shadow transition-colors ${snapshot.isDragging ? "shadow-xl ring-2 ring-indigo-400 relative" : "md:hover:shadow-md md:hover:-translate-y-0.5 active:scale-[0.98] transition-all"}`}
                             >
                               <div
                                 {...provided.dragHandleProps}
@@ -106,12 +106,16 @@ const EisenhowerMatrix = ({
                               <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                 <button
                                   onClick={() => toggleTaskStatus(task.id)}
+                                  type="button"
+                                  aria-label={task.completed ? "Batalkan selesai" : "Tandai selesai"}
                                   className={`p-1.5 rounded-lg transition-colors cursor-pointer ${task.completed ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10" : "text-slate-300 dark:text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"}`}
                                 >
                                   <CheckCircle className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => deleteTask(task.id)}
+                                  type="button"
+                                  aria-label="Hapus tugas"
                                   className="p-1.5 rounded-lg text-slate-300 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
                                 >
                                   <Trash2 className="w-4 h-4" />
