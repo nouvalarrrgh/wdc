@@ -80,10 +80,12 @@ export default function NekoGuide() {
 
     // MENGHAPUS BOM WAKTU PERFORMA: setInterval diganti dengan Event Listener!
     window.addEventListener('storage', checkProgress);
+    window.addEventListener('prodify-sync', checkProgress);
 
     return () => {
       clearTimeout(initTimer);
       window.removeEventListener('storage', checkProgress);
+      window.removeEventListener('prodify-sync', checkProgress);
     };
   }, [checkProgress, isDemoMode]);
 

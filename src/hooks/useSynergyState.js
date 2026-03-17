@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getJson } from '../utils/storage'; // Gunakan helper yang sudah kamu buat!
 
 export function useSynergyState() {
   const [energyCoins, setEnergyCoins] = useState(10);
@@ -25,7 +24,11 @@ export function useSynergyState() {
     
     // Auto-update jika ada perubahan dari tab/komponen lain
     window.addEventListener('storage', calculateSynergy);
-    return () => window.removeEventListener('storage', calculateSynergy);
+    window.addEventListener('prodify-sync', calculateSynergy);
+    return () => {
+      window.removeEventListener('storage', calculateSynergy);
+      window.removeEventListener('prodify-sync', calculateSynergy);
+    };
   }, []);
 
   return { energyCoins, balanceState };

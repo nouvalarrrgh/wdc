@@ -3,17 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Layers, BarChart2, BookOpen, CalendarDays, Focus, Bell, Search, Menu, X, ChevronRight, Settings as SettingsIcon, Star, ShieldCheck, Zap, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-// IMPORT KOMPONEN LOGIN & LANDING PAGE (Statis)
 import Login from './components/Login';
 import LandingPage from './components/LandingPage';
 import CognitiveGuard from './components/CognitiveGuard';
 import NekoGuide from './components/NekoGuide';
 
-// IMPORT STORAGE TINGKAT DEWA
 import { getJson } from './utils/storage';
 import { makeAvatarDataUri } from './utils/avatar';
 
-// LAZY LOADING KOMPONEN DASHBOARD DLL
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const ZenNotes = lazy(() => import('./components/ZenNotes'));
 const TimeManager = lazy(() => import('./components/TimeManager'));
@@ -37,8 +34,9 @@ function App() {
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState(() => getJson('prodify_user', null));
+  const userRef = useRef(user);
+  const activeMenuRef = useRef(activeMenu);
 
-  // STATE UNTUK MENGONTROL ROUTING LANDING PAGE VS LOGIN
   const [showLanding, setShowLanding] = useState(true);
 
   const scrollContainerRef = useRef(null);
@@ -49,12 +47,14 @@ function App() {
     }
   }, [activeMenu]);
 
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { activeMenuRef.current = activeMenu; }, [activeMenu]);
+
   const [userLevel, setUserLevel] = useState(1);
   const [userExp, setUserExp] = useState(0);
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profileUsername, setProfileUsername] = useState('');
 
-  // STATE ONBOARDING STATIS KEMBALI DIHADIRKAN
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
 
@@ -71,38 +71,35 @@ function App() {
     return (window.location.hash || '#/').replace(/^#\/?/, '').trim();
   }, []);
 
-  const setHash = useCallback((key, { replace = false } = {}) => {
+  const setHash = useCallback((key, { replace = false, silent = false } = {}) => {
     if (typeof window === 'undefined') return;
     const next = key ? `#/${key}` : '#/';
-    if (replace) window.history.replaceState(null, '', next);
-    else window.location.hash = `/${key || ''}`;
+    if (replace) {
+      window.history.replaceState(null, '', next);
+      
+      if (!silent) {
+        const evt = typeof HashChangeEvent !== 'undefined' ? new HashChangeEvent('hashchange') : new Event('hashchange');
+        window.dispatchEvent(evt);
+      }
+      return;
+    }
+    window.location.hash = `/${key || ''}`;
   }, []);
 
   const navigateTo = useCallback((target, opts = {}) => {
     const { replace = false } = opts;
     setIsSidebarOpen(false);
 
-    if (!user) {
-      if (target === 'login') {
-        setShowLanding(false);
-        setHash('login', { replace });
-        return;
-      }
-      if (target === 'landing') {
-        setShowLanding(true);
-        setHash('', { replace });
-        return;
-      }
-      setShowLanding(false);
-      setHash('login', { replace });
-      return;
+    const isAuthed = !!userRef.current;
+
+    if (!isAuthed) {
+      if (target === 'landing') return setHash('', { replace });
+      if (target === 'login') return setHash('login', { replace });
+      return setHash('login', { replace });
     }
 
-    if (APP_MENU_KEYS.has(target)) {
-      setActiveMenu(target);
-      setHash(target, { replace });
-    }
-  }, [setHash, user]);
+    if (APP_MENU_KEYS.has(target)) setHash(target, { replace });
+  }, [setHash]);
 
   const triggerCognitiveGuard = useCallback(() => {
     setCognitiveGuardSignal((n) => n + 1);
@@ -110,11 +107,17 @@ function App() {
 
   const getSettings = () => getJson('prodify_settings', {});
 
-  // INIT DARK MODE & GLOBAL DATA
   const loadGlobalData = useCallback(() => {
     const settings = getJson('prodify_settings', {});
     if (settings.darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
+
+    if (settings.reducedMotion) document.documentElement.classList.add('reduce-motion');
+    else document.documentElement.classList.remove('reduce-motion');
+
+    const fontScale = settings.fontScale || 'normal';
+    if (fontScale && fontScale !== 'normal') document.documentElement.setAttribute('data-font-scale', fontScale);
+    else document.documentElement.removeAttribute('data-font-scale');
 
     const habits = getJson('prodify_habits_v4', []);
     const focusStats = getJson('forest_stats', { planted: 0 });
@@ -132,36 +135,40 @@ function App() {
   useEffect(() => {
     loadGlobalData();
     window.addEventListener('storage', loadGlobalData);
+    window.addEventListener('prodify-sync', loadGlobalData);
     window.addEventListener('themeChanged', loadGlobalData);
     return () => {
       window.removeEventListener('storage', loadGlobalData);
+      window.removeEventListener('prodify-sync', loadGlobalData);
       window.removeEventListener('themeChanged', loadGlobalData);
     }
   }, [loadGlobalData]);
 
-  // URL HASH SYNC: enables Back/Forward browser history without react-router.
   useEffect(() => {
     const applyFromLocation = () => {
       const key = getHashKey();
-      if (!user) {
+      const currentUser = userRef.current;
+
+      if (!currentUser) {
         setShowLanding(key !== 'login');
         return;
       }
-      if (APP_MENU_KEYS.has(key)) setActiveMenu(key);
+
+      if (APP_MENU_KEYS.has(key)) {
+        setActiveMenu(key);
+        return;
+      }
+
+      const fallback = 'dashboard';
+      if (activeMenuRef.current !== fallback) setActiveMenu(fallback);
+      setHash(fallback, { replace: true, silent: true });
     };
 
     applyFromLocation();
     window.addEventListener('hashchange', applyFromLocation);
     return () => window.removeEventListener('hashchange', applyFromLocation);
-  }, [getHashKey, user]);
+  }, [getHashKey, setHash]);
 
-  useEffect(() => {
-    if (!user) return;
-    const key = getHashKey();
-    if (!APP_MENU_KEYS.has(key)) setHash(activeMenu, { replace: true });
-  }, [activeMenu, getHashKey, setHash, user]);
-
-  // LOGIKA MUNCULNYA ONBOARDING STATIS
   useEffect(() => {
     const onboarded = localStorage.getItem('prodify_onboarded_v1');
     if (!onboarded && user) setShowOnboarding(true);
@@ -172,7 +179,6 @@ function App() {
     setShowOnboarding(false);
   };
 
-  // SISTEM PENCARIAN
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]); setShowSearchDrop(false); return;
@@ -196,7 +202,6 @@ function App() {
     setShowSearchDrop(true);
   }, [searchQuery]);
 
-  // SISTEM NOTIFIKASI
   useEffect(() => {
     const checkNotifs = () => {
       const settings = getSettings();
@@ -232,13 +237,14 @@ function App() {
     checkNotifs();
     const interval = setInterval(checkNotifs, 60000);
     window.addEventListener('storage', checkNotifs);
+    window.addEventListener('prodify-sync', checkNotifs);
     return () => {
       clearInterval(interval);
       window.removeEventListener('storage', checkNotifs);
+      window.removeEventListener('prodify-sync', checkNotifs);
     };
   }, [activeMenu]);
 
-  // ROUTING LOGIC
   if (!user) {
     return (
       <AnimatePresence mode="wait">
@@ -260,15 +266,15 @@ function App() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="relative min-h-screen bg-[#050814] text-slate-300"
-          >
-            <button
-            onClick={() => navigateTo('landing')}
-              className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50 px-2.5 py-2 sm:px-4 sm:py-2 bg-slate-900/40 sm:bg-white/5 backdrop-blur-md rounded-full sm:rounded-xl font-bold text-white border border-slate-700/60 sm:border-white/10 shadow-lg cursor-pointer hover:bg-slate-900/60 sm:hover:bg-white/10 hover:border-[#00f0ff]/50 transition-all flex items-center gap-1.5 sm:gap-2"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Kembali ke Beranda</span>
-            </button>
-            <Login onLogin={(u) => { setUser(u); setActiveMenu('dashboard'); setShowLanding(false); setHash('dashboard', { replace: true }); }} />
+              <button
+              onClick={() => navigateTo('landing')}
+                className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50 px-2.5 py-2 sm:px-4 sm:py-2 bg-slate-900/40 sm:bg-white/5 backdrop-blur-md rounded-full sm:rounded-xl font-bold text-white border border-slate-700/60 sm:border-white/10 shadow-lg cursor-pointer hover:bg-slate-900/60 sm:hover:bg-white/10 hover:border-[#00f0ff]/50 transition-all flex items-center gap-1.5 sm:gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Kembali ke Beranda</span>
+              </button>
+            <Login onLogin={(u) => { setUser(u); setActiveMenu('dashboard'); setShowLanding(false); setHash('dashboard', { replace: true, silent: true }); }} />
           </MotionDiv>
         )}
       </AnimatePresence>
@@ -280,7 +286,7 @@ function App() {
     setUser(null);
     setActiveMenu('dashboard');
     setShowLanding(true);
-    setHash('', { replace: true });
+    setHash('', { replace: true, silent: true });
   };
 
   const renderContent = () => {
@@ -319,7 +325,6 @@ function App() {
         <div className="fixed inset-0 bg-slate-900/60 z-30 lg:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      {/* ========== SIDEBAR ========== */}
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col w-[280px] h-[100dvh] bg-slate-50/90 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/60 dark:border-slate-800/80 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-all duration-300 shadow-2xl lg:shadow-none overflow-hidden`}>
 
         <MotionDiv animate={{ x: [0, 20, 0], y: [0, -20, 0], scale: [1, 1.1, 1] }} transition={{ duration: 15, repeat: Infinity, ease: 'linear' }} className="absolute top-[-10%] left-[-10%] w-[50%] h-[30%] bg-indigo-400/10 blur-3xl rounded-full pointer-events-none" />
@@ -346,7 +351,6 @@ function App() {
           ))}
         </div>
 
-        {/* SIDEBAR FOOTER: USER PROFILE CARD */}
         <div className="p-4 border-t border-slate-200/50 dark:border-slate-800/80 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md relative z-10">
           <div onClick={() => navigateTo('profile')}
             className={`flex items-center justify-between p-3 rounded-2xl bg-white/80 dark:bg-slate-800/80 border ${activeMenu === 'profile' ? 'border-purple-400 dark:border-purple-500 shadow-md shadow-purple-500/10 ring-2 ring-purple-50 dark:ring-purple-500/20' : 'border-slate-200/60 dark:border-slate-700/60 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md'} transition-all cursor-pointer group`}>
@@ -373,10 +377,8 @@ function App() {
         </div>
       </aside>
 
-      {/* ========== MAIN CONTENT ========== */}
       <main className="flex-1 flex flex-col h-[100dvh] lg:ml-[280px] min-w-0 relative">
 
-        {/* Topbar */}
         <header className="flex items-center justify-between w-full h-[76px] shrink-0 border-b border-slate-200/50 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl px-6 lg:px-10 z-30 sticky top-0 shadow-md shadow-slate-300/40 dark:shadow-slate-950/40 transition-all">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 -ml-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl active:scale-95 transition-transform focus:ring-2 focus:ring-indigo-500">
@@ -391,7 +393,6 @@ function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Global Search Bar */}
             <div className="relative hidden md:block w-64">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
               <input
@@ -420,7 +421,6 @@ function App() {
               </AnimatePresence>
             </div>
 
-            {/* Notifikasi Lonceng */}
             <div className="relative">
               <button
                 onClick={() => setShowNotif(!showNotif)}
@@ -467,8 +467,7 @@ function App() {
             </button>
           </div>
         </header>
-
-        {/* CONTAINER SCROLL UTAMA */}
+        
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 pb-32 relative scroll-smooth custom-scrollbar">
           <Suspense fallback={<PageLoader />}>
             <AnimatePresence mode="wait">
@@ -497,9 +496,6 @@ function App() {
           </div>
         </footer>
 
-        {/* ============================================== */}
-        {/* MODAL ONBOARDING STATIS (PERTAMA KALI LOGIN) */}
-        {/* ============================================== */}
         {showOnboarding && createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in">
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in-up border border-indigo-100 dark:border-slate-700">

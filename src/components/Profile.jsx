@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { User, Mail, GraduationCap, MapPin, Camera, Save, Phone, AtSign, Flame, CheckCircle2, TreePine, BarChart2, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { User, Mail, GraduationCap, MapPin, Camera, Save, Phone, AtSign, TreePine, Award, BadgeCheck, Lock, Timer, CalendarCheck2, BookOpen } from 'lucide-react';
 import { getJson, setJson } from '../utils/storage';
 import { makeAvatarDataUri } from '../utils/avatar';
 import { compressImageFileToDataUrl } from '../utils/image';
-import { prodifyAlert, prodifyConfirm } from '../utils/popup';
+import { prodifyAlert } from '../utils/popup';
 
 const getInitialProfile = () => {
     const baseProfile = {
@@ -46,37 +46,99 @@ const getInitialProfile = () => {
 export default function Profile() {
     const [profile, setProfile] = useState(getInitialProfile);
     const [isEditing, setIsEditing] = useState(false);
-    const [summary, setSummary] = useState({
-        treesPlanted: 0,
-        longestStreak: 0,
-        avgRadar: 0,
-        completedTasks: 0,
-    });
+    const [habitsTick, setHabitsTick] = useState(0);
+    const [syncTick, setSyncTick] = useState(0);
+
+    const [forestStats, setForestStats] = useState(() => getJson('forest_stats', { planted: 0, dead: 0 }));
 
     useEffect(() => {
-        const streakData = getJson('prodify_login_streak', { streak: 0 });
-        const deadlineTasks = getJson('prodify_tasks', []);
-        const matrixTasks = getJson('matrix_tasks', []);
-        const completedTasks = deadlineTasks.filter(t => t.completed).length + matrixTasks.filter(t => t.completed).length;
-        const habits = getJson('prodify_habits_v4', []);
-        const forestStats = getJson('forest_stats', { planted: 0 });
-        const radarScores = getJson('prodify_radar_scores', { akademik: 50, organisasi: 50, istirahat: 50, sosial: 50, tugas: 50 });
-
-        const habitLongest = habits.reduce((acc, h) => Math.max(acc, h?.streak || 0), 0);
-        const longestStreak = Math.max(streakData.streak || 0, habitLongest);
-
-        const radarVals = Object.values(radarScores || {})
-            .map((v) => (typeof v === 'number' ? v : parseFloat(v)))
-            .filter((n) => Number.isFinite(n));
-        const avgRadar = radarVals.length ? Math.round(radarVals.reduce((a, b) => a + b, 0) / radarVals.length) : 0;
-
-        setSummary({
-            treesPlanted: forestStats?.planted || 0,
-            longestStreak,
-            avgRadar,
-            completedTasks,
-        });
+        const sync = (e) => {
+            const key = e?.key || e?.detail?.key;
+            if (!key || key === 'forest_stats' || key === 'prodify_habits_v4') {
+                setForestStats(getJson('forest_stats', { planted: 0, dead: 0 }));
+            }
+            if (!key || key === 'prodify_habits_v4') setHabitsTick((n) => n + 1);
+            if (!key || key === 'prodify_tasks' || key === 'zen_pages_multi' || String(key).startsWith('forest_today_')) setSyncTick((n) => n + 1);
+        };
+        window.addEventListener('storage', sync);
+        window.addEventListener('prodify-sync', sync);
+        return () => {
+            window.removeEventListener('storage', sync);
+            window.removeEventListener('prodify-sync', sync);
+        };
     }, []);
+    const { level, exp, title } = useMemo(() => {
+        const habits = getJson('prodify_habits_v4', []);
+        const planted = forestStats?.planted || 0;
+
+        const totalExp = (habits.reduce((acc, h) => acc + (h?.streak || 0), 0) * 10) + (planted * 25);
+        const computedLevel = Math.floor(totalExp / 100) + 1;
+
+        const getTitle = (lv) => {
+            if (lv >= 25) return 'Deep Work Master';
+            if (lv >= 18) return 'Discipline Architect';
+            if (lv >= 12) return 'Consistency Builder';
+            if (lv >= 7) return 'Momentum Seeker';
+            return 'Novice Scholar';
+        };
+
+        return { level: computedLevel, exp: totalExp, title: getTitle(computedLevel) };
+    }, [forestStats?.planted, habitsTick]);
+
+    const forestSlots = 12;
+    const forestFill = Math.min(forestSlots, Math.max(1, Math.floor(level * 0.8) + Math.floor((forestStats?.planted || 0) / 20)));
+
+    const achievements = useMemo(() => {
+        const localDateKey = (() => {
+            const d = new Date();
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().split('T')[0];
+        })();
+
+        const focusToday = parseInt(getJson(`forest_today_${localDateKey}`, '0'), 10) || 0;
+        const deadlines = getJson('prodify_tasks', []);
+        const onTimeCompleted = deadlines.filter((t) => {
+            if (!t?.completed) return false;
+            if (!t?.deadline) return false;
+            if (!t?.completedAt) return false;
+            const doneAt = new Date(t.completedAt).getTime();
+            const dueAt = new Date(t.deadline).getTime();
+            return Number.isFinite(doneAt) && Number.isFinite(dueAt) && doneAt <= dueAt;
+        }).length;
+
+        const notesCount = (getJson('zen_pages_multi', []) || []).length;
+
+        return [
+            {
+                id: 'iron_focus',
+                title: 'Iron Focus',
+                desc: 'Selesaikan 5 sesi Deep Focus dalam 1 hari.',
+                icon: Timer,
+                unlocked: focusToday >= 5,
+            },
+            {
+                id: 'master_of_time',
+                title: 'Master of Time',
+                desc: 'Selesaikan 10 tugas sebelum deadline.',
+                icon: CalendarCheck2,
+                unlocked: onTimeCompleted >= 10,
+            },
+            {
+                id: 'forest_builder',
+                title: 'Forest Builder',
+                desc: 'Tanam minimal 25 pohon lewat sesi fokus.',
+                icon: TreePine,
+                unlocked: (forestStats?.planted || 0) >= 25,
+            },
+            {
+                id: 'note_scholar',
+                title: 'Note Scholar',
+                desc: 'Buat 10 catatan (ZenNotes) untuk kuliah & project.',
+                icon: BookOpen,
+                unlocked: notesCount >= 10,
+            },
+        ];
+    }, [syncTick, forestStats?.planted]);
 
     const handleChange = (e) => {
         setProfile({ ...profile, [e.target.name]: e.target.value });
@@ -114,23 +176,6 @@ export default function Profile() {
         } finally {
             // allow re-upload same file
             e.target.value = '';
-        }
-    };
-
-    const handleResetAccount = async () => {
-        const ok = await prodifyConfirm({
-            title: 'Reset Akun',
-            message: 'Reset akun akan menghapus seluruh data Prodify di browser ini. Lanjutkan?',
-            confirmText: 'Reset',
-            cancelText: 'Batal',
-            danger: true,
-        });
-        if (!ok) return;
-        try {
-            localStorage.clear();
-            window.sessionStorage?.clear?.();
-        } finally {
-            window.location.reload();
         }
     };
 
@@ -183,36 +228,102 @@ export default function Profile() {
                     </div>
                 </div>
 
-                {/* Details + Productivity Snapshot */}
+                {/* Details (utility) + Showcase (non-analytic) */}
                 <div className="bg-white dark:bg-slate-900/80 backdrop-blur-md rounded-[2rem] border border-slate-200 dark:border-slate-700/60 p-6 md:p-8 shadow-sm md:col-span-2 transition-colors space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <TreePine className="w-3.5 h-3.5 text-emerald-400" /> Total Pohon
+                    {/* Kartu Mahasiswa Virtual */}
+                    <div className="bg-gradient-to-r from-indigo-50 to-white dark:from-indigo-950/35 dark:to-slate-900 border border-indigo-100 dark:border-indigo-500/20 rounded-3xl p-5 md:p-6 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-44 h-44 bg-indigo-100/70 dark:bg-indigo-500/10 rounded-full -mr-20 -mt-20 blur-2xl pointer-events-none" />
+                        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-300">ID Card</p>
+                                <h3 className="text-lg md:text-xl font-black text-slate-800 dark:text-white mt-1 flex items-center gap-2">
+                                    <Award className="w-5 h-5 text-amber-500" /> {title}
+                                </h3>
+                                <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">
+                                    Level <span className="font-black text-indigo-600 dark:text-indigo-400">{level}</span> • EXP <span className="font-black text-slate-800 dark:text-white">{exp}</span>
+                                </p>
                             </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.treesPlanted}</p>
-                            <p className="text-[10px] text-slate-400">Pohon ditanam dari Deep Focus</p>
+                            <div className="flex items-center gap-3">
+                                <div className="px-4 py-3 bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Forest</p>
+                                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2 mt-1">
+                                        <TreePine className="w-5 h-5" /> {forestStats?.planted || 0} Pohon
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <Flame className="w-3.5 h-3.5 text-orange-400" /> Longest Streak
+                    </div>
+
+                    {/* Forest Sandbox (visual reward) */}
+                    <div className="bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/50 rounded-3xl p-5 md:p-6 relative overflow-hidden">
+                        <div className="absolute inset-0 pointer-events-none opacity-60 dark:opacity-40" style={{ backgroundImage: 'radial-gradient(circle, rgba(16,185,129,0.18) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+                        <div className="relative z-10">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800 dark:text-white tracking-tight">Forest Sandbox</h4>
+                                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
+                                        Ini bukan analitik produktivitas — ini “lemari piala” visual. Semakin naik level, kebunmu makin rindang.
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stage</p>
+                                    <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{Math.min(5, Math.floor(level / 5) + 1)}/5</p>
+                                </div>
                             </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.longestStreak}</p>
-                            <p className="text-[10px] text-slate-400">Rekor streak tertinggi</p>
+
+                            <div className="mt-5 grid grid-cols-6 gap-2">
+                                {Array.from({ length: forestSlots }, (_, i) => {
+                                    const isOn = i < forestFill;
+                                    const size = i % 3 === 0 ? 26 : i % 3 === 1 ? 22 : 20;
+                                    return (
+                                        <div key={i} className={`flex items-center justify-center rounded-2xl border shadow-sm transition-colors ${isOn ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/50 opacity-60'}`}>
+                                            <TreePine
+                                                className={`${isOn ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-600'}`}
+                                                style={{ width: size, height: size }}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <BarChart2 className="w-3.5 h-3.5 text-indigo-400" /> Skor Radar
+                    </div>
+
+                    {/* Achievements / Badges (Gamer Student) */}
+                    <div className="bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/50 rounded-3xl p-5 md:p-6">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 className="text-sm font-black text-slate-800 dark:text-white tracking-tight">Achievements</h4>
+                                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+                                    Badge otomatis terbuka dari data lokal (tanpa backend).
+                                </p>
                             </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.avgRadar}%</p>
-                            <p className="text-[10px] text-slate-400">Rata-rata evaluasi</p>
+                            <div className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[11px] font-black uppercase tracking-widest">
+                                Gamer Mode
+                            </div>
                         </div>
-                        <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Tugas Selesai
-                            </div>
-                            <p className="text-xl font-black text-slate-800 dark:text-white">{summary.completedTasks}</p>
-                            <p className="text-[10px] text-slate-400">Sejak mulai memakai Prodify</p>
+
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {achievements.map((a) => {
+                                const Icon = a.icon;
+                                return (
+                                    <div key={a.id} className={`relative overflow-hidden rounded-3xl border p-4 transition-colors ${a.unlocked ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/50'}`}>
+                                        <div className="flex items-start gap-3">
+                                            <div className={`p-2.5 rounded-2xl border shadow-sm ${a.unlocked ? 'bg-white/80 dark:bg-slate-900/40 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-white/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
+                                                <Icon className="w-5 h-5" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className={`text-sm font-black ${a.unlocked ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>{a.title}</p>
+                                                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">{a.desc}</p>
+                                            </div>
+                                            {a.unlocked ? (
+                                                <BadgeCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" title="Unlocked" />
+                                            ) : (
+                                                <Lock className="w-5 h-5 text-slate-400 dark:text-slate-600" title="Locked" />
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -314,27 +425,6 @@ export default function Profile() {
                             />
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {/* Danger Zone: Reset Akun */}
-            <div className="bg-gradient-to-r from-rose-50 to-white dark:from-rose-950/30 dark:to-slate-900 rounded-[2rem] border border-rose-200 dark:border-rose-900/50 p-6 md:p-8 shadow-sm transition-colors">
-                <h4 className="text-xs font-black text-rose-600 dark:text-rose-500 uppercase tracking-widest mb-5 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" /> Zona Berbahaya
-                </h4>
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
-                    <div>
-                        <p className="text-sm font-bold text-slate-800 dark:text-white">Reset Akun</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
-                            Menghapus seluruh data lokal (profil, catatan, tugas, habit, dan statistik) agar juri bisa mencoba dari awal.
-                        </p>
-                    </div>
-                    <button
-                        onClick={handleResetAccount}
-                        className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-rose-600/20 cursor-pointer"
-                    >
-                        Reset Akun
-                    </button>
                 </div>
             </div>
         </div>

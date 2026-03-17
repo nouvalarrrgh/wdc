@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Radar, Bar } from 'react-chartjs-2';
@@ -6,7 +6,7 @@ import {
   Activity, LayoutGrid, Sparkles, TrendingUp, FileText, Flame, Zap, CheckCircle2,
   Target, Brain, Clock, BookOpen, Focus, Star, AlertTriangle, ChevronRight,
   Trophy, Calendar, Moon, Sun, Sunset, Sunrise, RefreshCw,
-  ShieldCheck
+  ShieldCheck, Eye, EyeOff
 } from 'lucide-react';
 import { generateExecutiveReport } from '../utils/ReportGenerator';
 import { NekoMascotMini, NekoMascotFull } from './NekoMascot';
@@ -133,6 +133,11 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
   // MENGGUNAKAN CUSTOM HOOKS BARU
   const { energyCoins } = useSynergyState();
 
+  const [zenDashboardMode, setZenDashboardMode] = useState(() => {
+    const settings = getJson('prodify_settings', {});
+    return !!settings.dashboardZenMode;
+  });
+
   const [loginStreak, setLoginStreak] = useState(0);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [completedTaskCount, setCompletedTaskCount] = useState(0);
@@ -144,6 +149,10 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
   const [weeklyBarData, setWeeklyBarData] = useState([]);
   const [categorySummary, setCategorySummary] = useState({});
   const [projectProgress, setProjectProgress] = useState({ total: 0, completed: 0, percentage: 0 });
+
+  const radarChartRef = useRef(null);
+  const barChartRef = useRef(null);
+  const syncDebounceRef = useRef(null);
 
   // Evaluation
   const [evaluationState, setEvaluationState] = useState('idle');
@@ -166,16 +175,20 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
 
   const [customQuote, setCustomQuote] = useState(() => getJson('prodify_custom_quote', ''));
   const [useCustomQuote, setUseCustomQuote] = useState(() => getJson('prodify_use_custom_quote', false));
+  const [quoteDayIndex, setQuoteDayIndex] = useState(0);
+
+  useEffect(() => {
+    setQuoteDayIndex(Math.floor(Date.now() / (1000 * 60 * 60 * 24)));
+  }, []);
 
   const todayQuote = useMemo(() => {
     if (useCustomQuote && customQuote.trim()) {
       return { text: customQuote.trim(), author: 'Quote Pribadi' };
     }
-    const dayIndex = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
-    const idx = dayIndex % QUOTES.length;
+    const idx = quoteDayIndex % QUOTES.length;
     const q = QUOTES[idx];
     return { text: q.text, author: q.author };
-  }, [useCustomQuote, customQuote]);
+  }, [useCustomQuote, customQuote, quoteDayIndex]);
 
   const greetingMeta = useMemo(() => {
     const h = new Date().getHours();
@@ -285,6 +298,70 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
     loadAllData();
   }, [loadAllData]);
 
+  const toggleZenDashboardMode = useCallback(() => {
+    setZenDashboardMode((prev) => {
+      const next = !prev;
+      const settings = getJson('prodify_settings', {});
+      setJson('prodify_settings', { ...settings, dashboardZenMode: next });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const DASHBOARD_SYNC_KEYS = new Set([
+      'prodify_login_streak',
+      'prodify_tasks',
+      'matrix_tasks',
+      'time_blocks',
+      'prodify_habits_v4',
+      'forest_stats',
+      'prodify_radar_scores',
+      'prodify_settings',
+      'prodify_balance_state',
+      'prodify_user',
+      'prodify_profileInfo',
+      'prodify_custom_quote',
+      'prodify_use_custom_quote',
+    ]);
+
+    const scheduleReload = () => {
+      if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+      syncDebounceRef.current = setTimeout(() => loadAllData(), 120);
+    };
+
+    const handleSync = (e) => {
+      const changedKey = e?.key || e?.detail?.key;
+      if (!changedKey || DASHBOARD_SYNC_KEYS.has(changedKey) || String(changedKey).startsWith('forest_today_')) {
+        scheduleReload();
+      }
+      if (!changedKey || changedKey === 'prodify_settings') {
+        const settings = getJson('prodify_settings', {});
+        setZenDashboardMode(!!settings.dashboardZenMode);
+      }
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('prodify-sync', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('prodify-sync', handleSync);
+      if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+    };
+  }, [loadAllData]);
+
+  useEffect(() => {
+    return () => {
+      try { radarChartRef.current?.destroy?.(); } catch { /* ignore */ }
+      try { barChartRef.current?.destroy?.(); } catch { /* ignore */ }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!zenDashboardMode) return;
+    try { radarChartRef.current?.destroy?.(); } catch { /* ignore */ }
+    try { barChartRef.current?.destroy?.(); } catch { /* ignore */ }
+  }, [zenDashboardMode]);
+
   const evaluationQuestions = [
     { type: 'choice', text: 'Gimana kualitas tidurmu seminggu ini?', options: [{ text: 'Nyenyak 7-8 jam, bangun segar! 🌅', effect: { istirahat: 30, akademik: 10 } }, { text: 'Cukup tapi sering kebangun 🥱', effect: { istirahat: 0 } }, { text: 'Begadang ngerjain tugas 🦉', effect: { istirahat: -25, tugas: 15 } }, { text: 'Begadang scroll/main game 🎮', effect: { istirahat: -30, sosial: 10 } }] },
     { type: 'choice', text: 'Gimana fokus studi dan belajarmu belakangan ini?', options: [{ text: 'Sangat fokus, catatan rapi! 🤓', effect: { akademik: 30, tugas: 10 } }, { text: 'Biasa, kadang ngelamun 😅', effect: { akademik: 0 } }, { text: 'Keteteran, banyak skip 🤯', effect: { akademik: -25 } }] },
@@ -340,17 +417,99 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
 
   const impactMeta = getImpactLabel(impactScore);
 
-  const radarData = {
+  const radarData = useMemo(() => ({
     labels: ['Akademik', 'Organisasi', 'Istirahat', 'Sosial', 'Tugas'],
-    datasets: [{ label: 'Keseimbangan', data: [scores.akademik, scores.organisasi, scores.istirahat, scores.sosial, scores.tugas], backgroundColor: 'rgba(79,70,229,0.15)', borderColor: 'rgba(79,70,229,1)', borderWidth: 2, pointBackgroundColor: 'rgba(79,70,229,1)', pointRadius: 4 }]
-  };
-  const radarOptions = { scales: { r: { suggestedMin: 0, suggestedMax: 100, grid: { color: 'rgba(148,163,184,0.2)' }, ticks: { display: false }, pointLabels: { font: { size: 10, weight: 'bold' }, color: '#64748b' } } }, plugins: { legend: { display: false } } };
+    datasets: [{
+      label: 'Keseimbangan',
+      data: [scores.akademik, scores.organisasi, scores.istirahat, scores.sosial, scores.tugas],
+      backgroundColor: 'rgba(79,70,229,0.15)',
+      borderColor: 'rgba(79,70,229,1)',
+      borderWidth: 2,
+      pointBackgroundColor: 'rgba(79,70,229,1)',
+      pointRadius: 4
+    }]
+  }), [scores.akademik, scores.organisasi, scores.istirahat, scores.sosial, scores.tugas]);
 
-  const barData = {
+  const radarOptions = useMemo(() => ({
+    scales: {
+      r: {
+        suggestedMin: 0,
+        suggestedMax: 100,
+        grid: { color: 'rgba(148,163,184,0.2)' },
+        ticks: { display: false },
+        pointLabels: { font: { size: 10, weight: 'bold' }, color: '#64748b' }
+      }
+    },
+    plugins: { legend: { display: false } }
+  }), []);
+
+  const barData = useMemo(() => ({
     labels: weeklyBarData.map(d => d.day),
-    datasets: [{ label: 'Aktivitas', data: weeklyBarData.map(d => d.value), backgroundColor: weeklyBarData.map((_, i) => i === 6 ? 'rgba(79,70,229,0.9)' : 'rgba(79,70,229,0.3)'), borderRadius: 6, borderSkipped: false }]
-  };
-  const barOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw} aktivitas` } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } }, y: { display: false, grid: { display: false } } } };
+    datasets: [{
+      label: 'Aktivitas',
+      data: weeklyBarData.map(d => d.value),
+      backgroundColor: weeklyBarData.map((_, i) => i === 6 ? 'rgba(79,70,229,0.9)' : 'rgba(79,70,229,0.3)'),
+      borderRadius: 6,
+      borderSkipped: false
+    }]
+  }), [weeklyBarData]);
+
+  const barOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `${ctx.raw} aktivitas` } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
+      y: { display: false, grid: { display: false } }
+    }
+  }), []);
+
+  const zenActionItems = useMemo(() => {
+    const items = [];
+
+    if (activeDeadlineCount > 0) {
+      items.push({
+        title: 'Cek Deadline Terdekat',
+        desc: `Ada ${activeDeadlineCount} deadline aktif yang perlu kamu amankan.`,
+        target: 'time_manager',
+      });
+    }
+
+    if (habitsData.total > 0 && habitsData.doneToday < habitsData.total) {
+      const pending = Math.max(0, habitsData.total - habitsData.doneToday);
+      items.push({
+        title: 'Selesaikan Habit Hari Ini',
+        desc: `Masih ada ${pending} habit yang belum selesai.`,
+        target: 'habits',
+      });
+    }
+
+    if (focusSessionsToday <= 0) {
+      items.push({
+        title: 'Mulai 1 Sesi Deep Focus',
+        desc: '1 sesi fokus kecil hari ini sudah cukup untuk menjaga momentum.',
+        target: 'focus',
+      });
+    }
+
+    if (projectProgress.total > 0 && projectProgress.percentage < 100) {
+      items.push({
+        title: 'Lanjutkan Project / Skripsi',
+        desc: `Progress project: ${projectProgress.percentage}%. Lanjutkan 1 target kecil sekarang.`,
+        target: 'time_manager',
+      });
+    }
+
+    if (!items.length) {
+      items.push({
+        title: 'Semua Aman',
+        desc: 'Dashboard Zen aktif. Pilih 1 hal kecil untuk dikerjakan, lalu lanjutkan harimu.',
+        target: 'time_manager',
+      });
+    }
+
+    return items.slice(0, 3);
+  }, [activeDeadlineCount, habitsData.total, habitsData.doneToday, focusSessionsToday, projectProgress.total, projectProgress.percentage]);
 
   return (
     <>
@@ -398,6 +557,19 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
                     <div className="text-[9px] font-bold uppercase tracking-wide opacity-70">Laporan</div>
                   </div>
                 </button>
+
+                <button
+                  data-html2canvas-ignore="true"
+                  onClick={toggleZenDashboardMode}
+                  className={`bg-white dark:bg-slate-800 border rounded-2xl px-5 py-3 text-center transition-all shadow-xl flex items-center justify-center gap-2 hover:-translate-y-1 cursor-pointer ${zenDashboardMode ? 'text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-50 dark:hover:bg-slate-700' : 'text-slate-700 dark:text-slate-200 border-indigo-100 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700'}`}
+                  title={zenDashboardMode ? 'Matikan Zen Dashboard' : 'Aktifkan Zen Dashboard'}
+                >
+                  {zenDashboardMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  <div className="text-left leading-tight">
+                    <div className="text-xs font-black whitespace-nowrap">Zen View</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wide opacity-70">Toggle</div>
+                  </div>
+                </button>
               </div>
             </div>
             <div className="hidden md:flex w-40 h-36 shrink-0 animate-float">
@@ -426,8 +598,47 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
           </button>
         </div>
 
-        {/* ===== INTELLIGENCE HUB ROW 1 ===== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {zenDashboardMode ? (
+          <div className="bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/50 rounded-3xl p-6 md:p-8 spatial-shadow">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white">Zen Dashboard</h3>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Mode tenang aktif. Metrik kompleks (chart, radar, heatmap) disembunyikan — fokus ke aksi paling penting sekarang.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => (typeof onNavigate === 'function' ? onNavigate('time_manager') : null)}
+                  className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/25 transition-all active:scale-95 cursor-pointer flex items-center gap-2"
+                >
+                  <Calendar className="w-5 h-5" /> Buka Time Manager
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {zenActionItems.map((item) => (
+                <div key={item.title} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-3xl p-5 flex flex-col gap-3">
+                  <div>
+                    <p className="text-[11px] font-black text-indigo-500 dark:text-indigo-300 uppercase tracking-widest">Action Item</p>
+                    <h4 className="text-base font-black text-slate-800 dark:text-white mt-1">{item.title}</h4>
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">{item.desc}</p>
+                  </div>
+                  <button
+                    onClick={() => (typeof onNavigate === 'function' ? onNavigate(item.target) : null)}
+                    className="mt-auto w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    Kerjakan Sekarang <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ===== INTELLIGENCE HUB ROW 1 ===== */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
           {/* Impact Score Card */}
           <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 p-6 rounded-3xl spatial-shadow flex flex-col items-center justify-center text-center gap-3 relative overflow-hidden group">
@@ -511,7 +722,7 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
             </div>
             <div className="flex-1 relative w-full min-h-[140px]">
               <div className="absolute inset-0">
-                {weeklyBarData.length > 0 && <Bar data={barData} options={barOptions} />}
+                {weeklyBarData.length > 0 && <Bar ref={barChartRef} redraw={false} data={barData} options={barOptions} />}
               </div>
             </div>
             <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center mt-2">
@@ -520,7 +731,7 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
             {Object.keys(categorySummary || {}).filter(k => categorySummary[k] > 0).length > 0 && (
               <div className="mt-1 flex flex-wrap justify-center gap-2">
                 {Object.entries(categorySummary)
-                  .filter(([_, count]) => count > 0)
+                  .filter(([, count]) => count > 0)
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 4)
                   .map(([key, count]) => {
@@ -605,7 +816,7 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
                 <div className="flex flex-col items-center w-full animate-fade-in-up h-full">
                   <div className="w-full flex-1 min-h-[180px] relative flex justify-center">
                     <div className="absolute inset-0 max-w-[240px] mx-auto">
-                      <Radar data={radarData} options={radarOptions} />
+                      <Radar ref={radarChartRef} redraw={false} data={radarData} options={radarOptions} />
                     </div>
                   </div>
                   <div className="mt-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-4 w-full text-center shadow-sm">
@@ -673,6 +884,9 @@ const Dashboard = ({ onNavigate, onTriggerCognitiveGuard } = {}) => {
             </div>
           </div>
         </div>
+
+          </>
+        )}
 
         {/* ===== MOTIVATIONAL QUOTE ===== */}
         <div className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center gap-6 spatial-shadow group hover:scale-[1.01] transition-transform">

@@ -135,11 +135,16 @@ const TimeManager = () => {
   useEffect(() => {
     const syncSettings = () => setAppSettings(getJson("prodify_settings", {}));
     const handleStorage = (e) => {
-      if (!e.key || e.key === "prodify_settings") syncSettings();
+      const changedKey = e?.key || e?.detail?.key;
+      if (!changedKey || changedKey === "prodify_settings") syncSettings();
     };
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("prodify-sync", handleStorage);
     syncSettings();
-    return () => window.removeEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("prodify-sync", handleStorage);
+    };
   }, []);
 
   // AUTO SAVES

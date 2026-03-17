@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, Target, Shield, ListChecks, Activity,
@@ -25,6 +25,18 @@ export default function LandingPage({ onStart }) {
     triggerDemoData();
     onStart(); // Proceed to dashboard after data is injected
   };
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      // Shortcut rahasia presentasi: Ctrl + Shift + D (Demo Data Inject)
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        handleDemoLaunch();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const handleNavClick = (e, targetId) => {
     e.preventDefault();
@@ -337,7 +349,7 @@ export default function LandingPage({ onStart }) {
           <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 text-center sm:text-left">
-                © {new Date().getFullYear()} Prodify. Dibuat dengan ❤️ untuk mahasiswa Indonesia.
+                © {new Date().getFullYear()} Prodify. All Right Reserved by Logicraft.
               </p>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import { dispatchProdifySync } from './storage';
+
 export const triggerDemoData = () => {
     const d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -112,14 +114,14 @@ export const triggerDemoData = () => {
     window.sessionStorage.setItem('forest_stats', JSON.stringify({ planted: 145, dead: 6 }));
     window.sessionStorage.setItem(`forest_today_${todayKey}`, '4'); // 4 session focus today
 
-    // Custom event to trigger reload/re-render across components
-    window.dispatchEvent(new Event('storage'));
+    // Custom event to trigger reload/re-render across components (SPA intra-tab)
+    dispatchProdifySync();
     window.location.reload(); // Force full reload to apply demo mode purely over session storage 
 };
 
 export const clearDemoData = () => {
     window.sessionStorage.removeItem('isDemoMode');
     window.sessionStorage.clear();
-    window.dispatchEvent(new Event('storage'));
+    dispatchProdifySync();
     window.location.reload();
 };

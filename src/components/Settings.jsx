@@ -2,17 +2,20 @@ import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Bell, Shield, Monitor, LogOut, Check, Trash2, X, AlertTriangle,
-    Download, Upload, Zap, BookOpen, Clock, FileJson, Brain
+    Download, Upload, Zap, BookOpen, Clock, FileJson, Brain, Eye
 } from 'lucide-react';
 
 // Import helper storage aman
-import { getJson, setJson } from '../utils/storage';
+import { dispatchProdifySync, getJson, setJson } from '../utils/storage';
 import { prodifyAlert, prodifyToast } from '../utils/popup';
 
 export default function Settings({ onLogout }) {
     const [settings, setSettings] = useState(() => {
         const defaults = {
             darkMode: false,
+            dashboardZenMode: false,
+            reducedMotion: false,
+            fontScale: 'normal', // normal | large | xlarge
             notifications: true,
             urgentReminders: true,    // Deadline < 2 Jam
             habitReminders: true,     // Habit harian
@@ -27,7 +30,17 @@ export default function Settings({ onLogout }) {
 
     const [savedMessage, setSavedMessage] = useState('');
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const fileInputRef = useRef(null);
+
+    const deleteConfirmToken = (() => {
+        const profileInfo = getJson('prodify_profileInfo', {});
+        const fromProfile = profileInfo?.username;
+        const userSession = getJson('prodify_user', {});
+        const fromUser = userSession?.name;
+        const raw = (fromProfile || fromUser || 'student').toString();
+        return raw.trim().toLowerCase().replace(/\s+/g, '');
+    })();
 
     // Menghitung estimasi penggunaan LocalStorage secara Real-Time
     const calculateStorage = () => {
@@ -49,9 +62,10 @@ export default function Settings({ onLogout }) {
     const usedStorageMB = calculateStorage();
     const usedStorageMBText = usedStorageMB.toFixed(2);
     const storagePercent = Math.min((usedStorageMB / 5.0) * 100, 100);
+    const isDeleteConfirmed = deleteConfirmText.trim().toLowerCase().replace(/\s+/g, '') === deleteConfirmToken;
 
-    const handleToggle = (key) => {
-        const newSettings = { ...settings, [key]: !settings[key] };
+    const setSettingValue = (key, value) => {
+        const newSettings = { ...settings, [key]: value };
         setSettings(newSettings);
         setJson('prodify_settings', newSettings);
 
@@ -69,42 +83,57 @@ export default function Settings({ onLogout }) {
         setTimeout(() => setSavedMessage(''), 2000);
     };
 
+    const handleToggle = (key) => setSettingValue(key, !settings[key]);
+
     const showNotification = (msg) => {
         setSavedMessage(msg);
         setTimeout(() => setSavedMessage(''), 3000);
     };
 
+    const isProdifyKey = (key) => {
+        return (
+            typeof key === 'string'
+            && (key.startsWith('prodify_') || key.startsWith('zen_') || key.startsWith('matrix_') || key.startsWith('time_') || key.startsWith('forest_'))
+        );
+    };
+
     // FITUR EKSPOR DATA LOKAL UTUH (BACKUP)
     const handleExportData = () => {
         try {
-            const keysToExport = [
-                'prodify_user', 'prodify_settings', 'zen_pages_multi', 'matrix_tasks',
-                'prodify_tasks', 'time_blocks', 'prodify_habits_v4', 'forest_stats',
-                'prodify_radar_scores', 'prodify_login_streak', 'prodify_academic_schedule',
-                'prodify_profileInfo', 'prodify_global_goal', 'prodify_balance_state', 'prodify_guide_finished'
-            ];
-
             const storageOptions = typeof window !== 'undefined' && window.sessionStorage.getItem('isDemoMode') === 'true' ? window.sessionStorage : localStorage;
-            const allData = {};
-            keysToExport.forEach(key => {
+            const data = {};
+            Object.keys(storageOptions).forEach((key) => {
+                if (!isProdifyKey(key)) return;
                 const val = storageOptions.getItem(key);
-                if (val) {
-                    try {
-                        allData[key] = JSON.parse(val);
-                    } catch {
-                        allData[key] = val; // Fallback cerdas untuk data string murni
-                    }
+                if (val == null) return;
+                try {
+                    data[key] = JSON.parse(val);
+                } catch {
+                    data[key] = val; // Fallback untuk string murni
                 }
             });
 
-            // Export file JSON
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allData, null, 2));
+            const payload = {
+                __meta__: {
+                    app: 'Prodify',
+                    version: 1,
+                    exportedAt: new Date().toISOString(),
+                    demoMode: (typeof window !== 'undefined') && (storageOptions === window.sessionStorage),
+                },
+                data,
+            };
+
+            // Export file JSON (Blob lebih aman daripada data: URL untuk file besar)
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
             const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", `Prodify_Backup_${new Date().toISOString().split('T')[0]}.json`);
+            downloadAnchorNode.setAttribute('href', url);
+            downloadAnchorNode.setAttribute('download', 'prodify_backup.json');
             document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
 
             showNotification("Data berhasil diekspor! (Backup Selesai)");
         } catch (error) {
@@ -121,16 +150,24 @@ export default function Settings({ onLogout }) {
         const reader = new FileReader();
         reader.onload = (event) => {
             try {
-                const importedData = JSON.parse(event.target.result);
+                const parsed = JSON.parse(event.target.result);
+                const importedData = parsed?.data && typeof parsed.data === 'object' ? parsed.data : parsed;
                 const storageOptions = typeof window !== 'undefined' && window.sessionStorage.getItem('isDemoMode') === 'true' ? window.sessionStorage : localStorage;
-                Object.keys(importedData).forEach(key => {
+
+                // Bersihkan hanya key milik Prodify, lalu restore dari file (menghindari injeksi key asing).
+                Object.keys(storageOptions).forEach((key) => {
+                    if (isProdifyKey(key)) storageOptions.removeItem(key);
+                });
+
+                Object.keys(importedData || {}).forEach(key => {
+                    if (!isProdifyKey(key)) return;
                     const valueToStore = typeof importedData[key] === 'object' ? JSON.stringify(importedData[key]) : importedData[key];
                     storageOptions.setItem(key, valueToStore);
                 });
-                window.dispatchEvent(new Event('storage'));
+                dispatchProdifySync();
                 showNotification("Data berhasil dipulihkan! Memuat ulang...");
                 setTimeout(() => window.location.reload(), 1500); // Reload agar seluruh state merender ulang
-            } catch (error) {
+            } catch {
                 prodifyAlert({ title: 'Impor Gagal', message: 'File backup tidak valid atau rusak.' });
             }
         };
@@ -149,7 +186,7 @@ export default function Settings({ onLogout }) {
 
         setSavedMessage('Data lokal fungsional berhasil dibersihkan');
         setTimeout(() => setSavedMessage(''), 3000);
-        window.dispatchEvent(new Event('storage'));
+        dispatchProdifySync();
     };
 
     // HARD RESET / HAPUS AKUN TOTAL
@@ -162,7 +199,7 @@ export default function Settings({ onLogout }) {
             }
         });
 
-        window.dispatchEvent(new Event('storage'));
+        dispatchProdifySync();
         prodifyToast("Sistem berhasil di-reset. Sampai jumpa kembali!", { variant: 'success' });
         onLogout();
         window.location.reload();
@@ -199,6 +236,70 @@ export default function Settings({ onLogout }) {
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 transition-colors">Lebih nyaman di mata untuk belajar malam</p>
                             </div>
                             <Toggle isOn={settings.darkMode} onClick={() => handleToggle('darkMode')} />
+                        </div>
+
+                        <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+                            <div className="pr-4">
+                                <p className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 text-emerald-500" /> Zen Dashboard</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 transition-colors">Sembunyikan chart & metrik kompleks di Dashboard, tampilkan Action Items saja.</p>
+                            </div>
+                            <Toggle isOn={!!settings.dashboardZenMode} onClick={() => handleToggle('dashboardZenMode')} />
+                        </div>
+                    </div>
+
+                    {/* Aksesibilitas & Tweaks */}
+                    <div className="bg-white dark:bg-slate-900/80 backdrop-blur-md rounded-[2rem] border border-slate-200 dark:border-slate-700/60 p-6 md:p-8 shadow-sm transition-colors">
+                        <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800 mb-6">
+                            <div className="p-2.5 bg-teal-50 dark:bg-teal-500/10 text-teal-600 rounded-xl"><Shield className="w-5 h-5" /></div>
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-white transition-colors">Aksesibilitas</h3>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div className="pr-4">
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white">Reduced Motion</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Kurangi animasi untuk menghindari motion sickness & mempercepat di laptop juri.</p>
+                                </div>
+                                <Toggle isOn={!!settings.reducedMotion} onClick={() => handleToggle('reducedMotion')} />
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="pr-4">
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white">Ukuran Teks</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Biar terbaca jelas saat presentasi di proyektor.</p>
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-1">
+                                    {[
+                                        { id: 'normal', label: 'Normal' },
+                                        { id: 'large', label: 'Besar' },
+                                        { id: 'xlarge', label: 'XL' },
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setSettingValue('fontScale', opt.id)}
+                                            aria-pressed={settings.fontScale === opt.id}
+                                            className={`px-3 py-2 rounded-xl text-xs font-black transition-colors cursor-pointer ${settings.fontScale === opt.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="pt-5 border-t border-slate-100 dark:border-slate-800">
+                                <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Shortcut Penting</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {[
+                                        { k: 'Ctrl + Shift + B', v: 'Cognitive Guard (Breathing)' },
+                                        { k: 'Ctrl + Shift + D', v: 'Inject Demo Data (Landing)' },
+                                    ].map((it) => (
+                                        <div key={it.k} className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3">
+                                            <span className="text-xs font-black text-slate-700 dark:text-slate-200">{it.v}</span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded-lg whitespace-nowrap">{it.k}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -274,10 +375,10 @@ export default function Settings({ onLogout }) {
 
                             <div className="flex flex-col sm:flex-row gap-4 mb-8">
                                 <button onClick={handleExportData} className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 rounded-xl font-bold text-sm transition-colors cursor-pointer">
-                                    <Download className="w-4 h-4" /> Ekspor (Backup)
+                                    <Upload className="w-4 h-4" /> Ekspor (Backup)
                                 </button>
                                 <button onClick={() => fileInputRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 rounded-xl font-bold text-sm transition-colors cursor-pointer">
-                                    <Upload className="w-4 h-4" /> Impor (Restore)
+                                    <Download className="w-4 h-4" /> Impor (Restore)
                                     <input type="file" accept=".json" ref={fileInputRef} onChange={handleImportData} className="hidden" />
                                 </button>
                             </div>
@@ -333,7 +434,7 @@ export default function Settings({ onLogout }) {
                         </button>
 
                         <button
-                            onClick={() => setShowDeleteModal(true)}
+                            onClick={() => { setDeleteConfirmText(''); setShowDeleteModal(true); }}
                             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-rose-600/20 cursor-pointer"
                         >
                             <Trash2 className="w-4 h-4" /> Hapus Akun
@@ -355,10 +456,29 @@ export default function Settings({ onLogout }) {
                         </p>
 
                         <div className="flex flex-col gap-3 relative z-10">
-                            <button onClick={handleDeleteAccount} className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 transition-all cursor-pointer">
+                            <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-2xl p-4 text-left">
+                                <p className="text-xs font-black text-rose-700 dark:text-rose-300 uppercase tracking-widest">Konfirmasi Wajib</p>
+                                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mt-2 leading-relaxed">
+                                    Ketik username berikut untuk melanjutkan: <span className="font-black text-rose-600 dark:text-rose-400">@{deleteConfirmToken}</span>
+                                </p>
+                                <input
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    placeholder={`Ketik @${deleteConfirmToken} untuk konfirmasi`}
+                                    autoFocus
+                                    className="mt-3 w-full bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-500/30 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-rose-500"
+                                />
+                            </div>
+
+                            <button
+                                onClick={handleDeleteAccount}
+                                disabled={!isDeleteConfirmed}
+                                className={`w-full py-4 text-white font-bold rounded-xl shadow-lg transition-all ${isDeleteConfirmed ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20 cursor-pointer' : 'bg-rose-300 dark:bg-rose-900/40 cursor-not-allowed opacity-70'}`}
+                                title={isDeleteConfirmed ? 'Hapus semua data sekarang' : 'Ketik username untuk mengaktifkan tombol'}
+                            >
                                 Ya, Musnahkan Semua Data
                             </button>
-                            <button onClick={() => setShowDeleteModal(false)} className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition-all cursor-pointer">
+                            <button onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }} className="w-full py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition-all cursor-pointer">
                                 Batal
                             </button>
                         </div>

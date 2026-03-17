@@ -16,6 +16,21 @@ body {
 }
 
 /* ============================================
+   ACCESSIBILITY (Settings-driven)
+   ============================================ */
+html[data-font-scale="large"] { font-size: 112.5%; }
+html[data-font-scale="xlarge"] { font-size: 125%; }
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ============================================
    CUSTOM SCROLLBAR (Elegant/Minimal)
    ============================================ */
 ::-webkit-scrollbar {

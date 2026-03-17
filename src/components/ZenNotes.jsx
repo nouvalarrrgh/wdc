@@ -76,7 +76,11 @@ const ZenNotes = () => {
     loadProjectTasks();
     // Sinkronisasi otomatis jika data di tempat lain berubah
     window.addEventListener('storage', loadProjectTasks);
-    return () => window.removeEventListener('storage', loadProjectTasks);
+    window.addEventListener('prodify-sync', loadProjectTasks);
+    return () => {
+      window.removeEventListener('storage', loadProjectTasks);
+      window.removeEventListener('prodify-sync', loadProjectTasks);
+    };
   }, []);
 
   // === FITUR BARU: MENCENTANG TUGAS DARI DALAM NOTES ===
@@ -138,7 +142,11 @@ const ZenNotes = () => {
       setAutoSaveEnabled(settings.autoSaveNotes !== false);
     };
     window.addEventListener('storage', syncAutoSaveSetting);
-    return () => window.removeEventListener('storage', syncAutoSaveSetting);
+    window.addEventListener('prodify-sync', syncAutoSaveSetting);
+    return () => {
+      window.removeEventListener('storage', syncAutoSaveSetting);
+      window.removeEventListener('prodify-sync', syncAutoSaveSetting);
+    };
   }, []);
 
   const updateActivePage = (field, value) => {
@@ -360,14 +368,64 @@ const ZenNotes = () => {
     wrapper.style.background = '#ffffff';
     wrapper.style.color = '#0f172a';
     wrapper.style.padding = '24px';
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.fontFamily = "'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, sans-serif";
+    wrapper.style.boxSizing = 'border-box';
 
     try {
+      const profileInfo = getJson('prodify_profileInfo', {});
+      const userSession = getJson('prodify_user', {});
+      const studentName = profileInfo?.name || userSession?.name || 'Mahasiswa';
+      const studentUsername = (profileInfo?.username || studentName || 'student').toString().trim().toLowerCase().replace(/\s+/g, '');
+      const printedAt = new Date().toLocaleDateString('id-ID', { dateStyle: 'full' });
+
+      const watermark = document.createElement('div');
+      watermark.style.position = 'absolute';
+      watermark.style.inset = '0';
+      watermark.style.display = 'flex';
+      watermark.style.alignItems = 'center';
+      watermark.style.justifyContent = 'center';
+      watermark.style.pointerEvents = 'none';
+      watermark.style.opacity = '0.06';
+      watermark.style.transform = 'rotate(-25deg)';
+      watermark.style.fontSize = '64px';
+      watermark.style.fontWeight = '900';
+      watermark.style.letterSpacing = '0.12em';
+      watermark.style.color = '#1e293b';
+      watermark.textContent = `PRODIFY • ${studentUsername}`;
+      wrapper.appendChild(watermark);
+
+      const header = document.createElement('div');
+      header.style.position = 'relative';
+      header.style.zIndex = '2';
+      header.style.border = '1px solid #e2e8f0';
+      header.style.borderRadius = '16px';
+      header.style.padding = '14px 16px';
+      header.style.marginBottom = '16px';
+      header.style.background = '#f8fafc';
+      header.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
+          <div>
+            <div style="font-size:12px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;color:#4f46e5;">Dokumen Resmi</div>
+            <div style="font-size:18px;font-weight:900;margin-top:4px;color:#0f172a;">${(activePage.title || 'Catatan')}</div>
+            <div style="font-size:12px;font-weight:700;margin-top:6px;color:#334155;">${studentName} • @${studentUsername}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;">Dicetak</div>
+            <div style="font-size:12px;font-weight:800;margin-top:6px;color:#0f172a;">${printedAt}</div>
+          </div>
+        </div>
+      `;
+      wrapper.appendChild(header);
+
       if (noteMode === 'text') {
         const clone = sourceEl.cloneNode(true);
         clone.contentEditable = 'false';
         clone.style.background = '#ffffff';
         clone.style.color = '#0f172a';
         clone.style.minHeight = 'auto';
+        clone.style.position = 'relative';
+        clone.style.zIndex = '2';
         wrapper.appendChild(clone);
       } else {
         const canvas = canvasRef.current;
@@ -376,6 +434,8 @@ const ZenNotes = () => {
         img.style.width = '100%';
         img.style.height = 'auto';
         img.src = canvas.toDataURL('image/png');
+        img.style.position = 'relative';
+        img.style.zIndex = '2';
         wrapper.appendChild(img);
       }
 
@@ -383,9 +443,9 @@ const ZenNotes = () => {
 
       await html2pdf().set({
         margin: 1,
-        filename: `${activePage.title || 'Catatan'}.pdf`,
+        filename: `${activePage.title || 'Catatan'}_${studentUsername}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF: { unit: 'in', format: 'letter', orientation: pageOrientation === 'potrait' ? 'portrait' : 'landscape' }
       }).from(wrapper).save();
     } finally {
@@ -480,6 +540,43 @@ const ZenNotes = () => {
   };
 
   const handleKeyDown = (e) => {
+    // Markdown shortcuts (mahasiswa mode cepat)
+    if (e.key === ' ') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+        const node = selection.focusNode;
+        const el = node ? (node.nodeType === 3 ? node.parentElement : node) : null;
+        const block = el?.closest?.('h1,h2,h3,p,div,li');
+
+        if (block && editorRef.current && editorRef.current.contains(block)) {
+          const range = selection.getRangeAt(0);
+          const pre = range.cloneRange();
+          pre.selectNodeContents(block);
+          pre.setEnd(range.endContainer, range.endOffset);
+
+          const preText = pre.toString().replace(/\u200B/g, '').trim();
+          const applyFormat = (cmd, value = null) => {
+            e.preventDefault();
+            block.textContent = '';
+
+            const caret = document.createRange();
+            caret.selectNodeContents(block);
+            caret.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(caret);
+
+            document.execCommand(cmd, false, value);
+            handleEditorInput();
+          };
+
+          if (preText === '#') return applyFormat('formatBlock', 'H1');
+          if (preText === '##') return applyFormat('formatBlock', 'H2');
+          if (preText === '###') return applyFormat('formatBlock', 'H3');
+          if (preText === '-') return applyFormat('insertUnorderedList');
+        }
+      }
+    }
+
     if (e.key === 'Enter') {
       const selection = window.getSelection();
       const node = selection.focusNode;
@@ -517,11 +614,46 @@ const ZenNotes = () => {
 
     const existingTasks = getJson('matrix_tasks', []);
     const taskCategory = showProjectPanel ? 'project' : 'academic';
-    const newTask = { id: Date.now().toString(), title: cleanText, category: taskCategory, quadrant: 'unassigned', energy: 1, completed: false };
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+    const newTask = { id, title: cleanText, category: taskCategory, quadrant: 'unassigned', energy: 1, completed: false, createdAt: new Date().toISOString() };
 
     setJson('matrix_tasks', [...existingTasks, newTask]); // ELEGAN DAN OTOMATIS SYNC!
 
     setSaveStatus('Tugas Ditambahkan!');
+    setTimeout(() => setSaveStatus('Tersimpan Otomatis'), 2000);
+    setShowTaskPopup(false);
+    setSelectedText('');
+    window.getSelection().removeAllRanges();
+  };
+
+  const saveToDeadline = () => {
+    const cleanText = selectedText.trim();
+    if (!cleanText) return;
+
+    const existingDeadlines = getJson('prodify_tasks', []);
+    const taskCategory = showProjectPanel ? 'project' : 'academic';
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+
+    // Default deadline: besok 23:59 waktu lokal (aman untuk demo + bisa diedit di TimeManager).
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(23, 59, 0, 0);
+    const deadlineIso = d.toISOString();
+
+    const newTask = {
+      id,
+      text: cleanText,
+      deadline: deadlineIso,
+      completed: false,
+      completedAt: null,
+      notified: false,
+      category: taskCategory,
+      createdAt: new Date().toISOString(),
+    };
+
+    setJson('prodify_tasks', [...existingDeadlines, newTask]);
+
+    setSaveStatus('Deadline Ditambahkan!');
     setTimeout(() => setSaveStatus('Tersimpan Otomatis'), 2000);
     setShowTaskPopup(false);
     setSelectedText('');
@@ -818,9 +950,28 @@ const ZenNotes = () => {
 
                   {/* Floating Popup "Jadikan Tugas" */}
                   {showTaskPopup && noteMode === 'text' && (
-                    <div className="absolute z-50 animate-fade-in-up bg-slate-900 dark:bg-slate-800 border dark:border-slate-700 text-white px-3 py-2 rounded-xl shadow-xl flex items-center gap-2 cursor-pointer hover:bg-indigo-600 transition-colors" style={{ left: `${popupPos.x}px`, top: `${popupPos.y}px`, transform: 'translateX(-50%)' }} onClick={saveToMatrix} onMouseDown={(e) => e.preventDefault()}>
+                    <div
+                      className="absolute z-50 animate-fade-in-up bg-slate-900 dark:bg-slate-800 border dark:border-slate-700 text-white px-3 py-2 rounded-2xl shadow-xl flex items-center gap-2"
+                      style={{ left: `${popupPos.x}px`, top: `${popupPos.y}px`, transform: 'translateX(-50%)' }}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
                       <CheckSquare className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold">{showProjectPanel ? 'Jadikan Target Project' : 'Kirim ke Task & Activity Manager'}</span>
+                      <span className="text-xs font-black whitespace-nowrap">{showProjectPanel ? 'Text → Project Task' : 'Text → Task'}</span>
+                      <div className="w-px h-5 bg-white/15 mx-1" />
+                      <button
+                        className="text-xs font-bold px-2.5 py-1 rounded-xl bg-white/10 hover:bg-indigo-600 transition-colors cursor-pointer"
+                        onClick={saveToMatrix}
+                        title="Masukkan ke Eisenhower Matrix"
+                      >
+                        Matrix
+                      </button>
+                      <button
+                        className="text-xs font-bold px-2.5 py-1 rounded-xl bg-white/10 hover:bg-rose-600 transition-colors cursor-pointer"
+                        onClick={saveToDeadline}
+                        title="Masukkan ke Deadline Tracker (default: besok 23:59)"
+                      >
+                        Deadline
+                      </button>
                     </div>
                   )}
                 </div>

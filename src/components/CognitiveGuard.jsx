@@ -56,6 +56,7 @@ const CognitiveGuard = ({ manualTriggerSignal = 0 }) => {
 
         // Cek setiap kali pengguna menambah/mengedit jadwal di TimeManager
         window.addEventListener('storage', checkCognitiveOverload);
+        window.addEventListener('prodify-sync', checkCognitiveOverload);
 
         // Pemicu Manual (Shortcut dan Button di Dashboard)
         const handleKeyDown = (e) => {
@@ -69,6 +70,7 @@ const CognitiveGuard = ({ manualTriggerSignal = 0 }) => {
 
         return () => {
             window.removeEventListener('storage', checkCognitiveOverload);
+            window.removeEventListener('prodify-sync', checkCognitiveOverload);
             window.removeEventListener('keydown', handleKeyDown);
         };
     }, [checkCognitiveOverload]);

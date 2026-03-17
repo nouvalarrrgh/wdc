@@ -110,7 +110,6 @@ const Habits = () => {
 
     setBalanceState(newState);
     setJson("prodify_balance_state", newState);
-    window.dispatchEvent(new Event('storage')); // Memicu sinkronisasi Neko/Dashboard
   }, [habits, activeDate]);
 
   const getCurrentCount = (habit, dateStr = activeDate) => {

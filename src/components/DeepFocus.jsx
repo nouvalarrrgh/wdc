@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 // IMPORT STORAGE TINGKAT DEWA
-import { getJson, setJson } from "../utils/storage";
+import { dispatchProdifySync, getJson, setJson } from "../utils/storage";
 
 const DURATION_OPTIONS = [
   { label: '25 Menit', seconds: 25 * 60, desc: 'Pomodoro' },
@@ -48,6 +48,9 @@ const DeepFocus = () => {
   // Research Mode Tracker
   const researchTimerRef = useRef(null);
   const researchBeepRef = useRef(null);
+  const researchEndsAtRef = useRef(null);
+  const originalTitleRef = useRef(null);
+  const faviconHrefRef = useRef(null);
   const [isResearching, setIsResearching] = useState(false);
 
   const audioRef = useRef(null);
@@ -57,6 +60,19 @@ const DeepFocus = () => {
 
   // MENGGUNAKAN getJson (Hardening Level Senior)
   const [appSettings, setAppSettings] = useState(() => getJson("prodify_settings", {}));
+
+  useEffect(() => {
+    const syncSettings = (e) => {
+      const key = e?.key || e?.detail?.key;
+      if (!key || key === 'prodify_settings') setAppSettings(getJson('prodify_settings', {}));
+    };
+    window.addEventListener('storage', syncSettings);
+    window.addEventListener('prodify-sync', syncSettings);
+    return () => {
+      window.removeEventListener('storage', syncSettings);
+      window.removeEventListener('prodify-sync', syncSettings);
+    };
+  }, []);
 
   useEffect(() => {
     audioRef.current = new Audio("https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3");
@@ -81,7 +97,7 @@ const DeepFocus = () => {
     let t = null;
     try {
       t = setTimeout(() => {
-        try { window.sessionStorage.setItem(BRAIN_DUMP_KEY, brainDumpText); } catch { }
+        try { window.sessionStorage.setItem(BRAIN_DUMP_KEY, brainDumpText); } catch { void 0; }
       }, 250);
     } catch {
       // ignore
@@ -92,7 +108,7 @@ const DeepFocus = () => {
   useEffect(() => {
     return () => {
       if (brainDumpToastTimerRef.current) clearTimeout(brainDumpToastTimerRef.current);
-      try { beepCtxRef.current?.close?.(); } catch { }
+      try { beepCtxRef.current?.close?.(); } catch { void 0; }
     };
   }, []);
 
@@ -144,7 +160,7 @@ const DeepFocus = () => {
       const isDemoMode = typeof window !== 'undefined' && window.sessionStorage.getItem('isDemoMode') === 'true';
       const storageOptions = isDemoMode ? window.sessionStorage : localStorage;
       storageOptions.removeItem(FOCUS_SESSION_KEY);
-      window.dispatchEvent(new Event('storage'));
+      dispatchProdifySync(FOCUS_SESSION_KEY);
     } catch {
       // ignore
     }
@@ -263,8 +279,8 @@ const DeepFocus = () => {
       g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
       o.stop(now + 0.13);
       setTimeout(() => {
-        try { o.disconnect(); } catch { }
-        try { g.disconnect(); } catch { }
+        try { o.disconnect(); } catch { void 0; }
+        try { g.disconnect(); } catch { void 0; }
       }, 220);
     } catch {
       // ignore
@@ -274,6 +290,7 @@ const DeepFocus = () => {
   const triggerResearchMode = useCallback(() => {
     primeBeepAudio();
     setIsResearching(true);
+    researchEndsAtRef.current = Date.now() + 120000;
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => { });
     }
@@ -307,6 +324,7 @@ const DeepFocus = () => {
 
   const resumeFromResearch = useCallback(() => {
     setIsResearching(false);
+    researchEndsAtRef.current = null;
     if (researchTimerRef.current) {
       clearTimeout(researchTimerRef.current);
       researchTimerRef.current = null;
@@ -331,6 +349,7 @@ const DeepFocus = () => {
       // Jika pengguna kembali ke tab, BATALKAN pemasa kematian, TETAPI BIARKAN MOD JEDA
       // Mereka mesti klik "Lanjut Fokus" secara manual untuk menyambung masa
       else if (!document.hidden && isRunning && treeState === "growing" && isResearching) {
+        researchEndsAtRef.current = null; // pause countdown marker (timer dibatalkan)
         if (researchTimerRef.current) {
           clearTimeout(researchTimerRef.current);
           researchTimerRef.current = null;
@@ -359,6 +378,70 @@ const DeepFocus = () => {
     };
   }, [isRunning, treeState, showWarning, appSettings.strictFocusMode, isResearching, triggerResearchMode]);
 
+  useEffect(() => {
+    if (!isResearching) {
+      if (originalTitleRef.current) document.title = originalTitleRef.current;
+      const iconEl = document.querySelector('link[rel~="icon"]');
+      if (iconEl && faviconHrefRef.current) iconEl.setAttribute('href', faviconHrefRef.current);
+      return undefined;
+    }
+
+    if (!originalTitleRef.current) originalTitleRef.current = document.title || 'Prodify';
+
+    const iconEl = document.querySelector('link[rel~="icon"]');
+    if (iconEl && !faviconHrefRef.current) faviconHrefRef.current = iconEl.getAttribute('href') || '';
+
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const formatLeft = (sec) => `${pad2(Math.floor(sec / 60))}:${pad2(sec % 60)}`;
+
+    const renderFavicon = (mmss) => {
+      if (!iconEl) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 64, 64);
+
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(32, 32, 26, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 16px system-ui, -apple-system, Segoe UI, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(mmss, 32, 34);
+
+        iconEl.setAttribute('href', canvas.toDataURL('image/png'));
+      } catch {
+        void 0;
+      }
+    };
+
+    const tick = () => {
+      const endsAt = researchEndsAtRef.current;
+      if (!endsAt) {
+        document.title = `Cari Referensi (Paused) — ${originalTitleRef.current || 'Prodify'}`;
+        if (iconEl && faviconHrefRef.current) iconEl.setAttribute('href', faviconHrefRef.current);
+        return;
+      }
+
+      const leftSec = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      const mmss = formatLeft(leftSec);
+      document.title = `(${mmss}) Cari Referensi... — ${originalTitleRef.current || 'Prodify'}`;
+      renderFavicon(mmss);
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [isResearching]);
+
   // Kawalan Audio
   useEffect(() => {
     const soundEnabled = appSettings.focusSounds !== false;
@@ -382,9 +465,7 @@ const DeepFocus = () => {
       const newSessionCount = parseInt(getJson(todayKey, '0')) + 1;
 
       // Untuk data sederhana (string angka), pakai localStorage biasa saja tidak masalah
-      // tapi dispatch event storage agar komponen lain tahu
       setJson(todayKey, String(newSessionCount));
-      window.dispatchEvent(new Event('storage'));
 
       setTodaySessions(newSessionCount);
 
